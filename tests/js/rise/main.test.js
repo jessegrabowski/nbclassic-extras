@@ -296,3 +296,25 @@ test("re-entering the slideshow does not add a second set of reveal listeners", 
         assert.equal(rise.revealListenerCount(name), 1, name);
     }
 });
+const SLIDE_TYPE_ACTIONS = [
+    ["RISE:toggle-slide", "slide"],
+    ["RISE:toggle-subslide", "subslide"],
+    ["RISE:toggle-fragment", "fragment"],
+    ["RISE:toggle-notes", "notes"],
+    ["RISE:toggle-skip", "skip"],
+];
+
+SLIDE_TYPE_ACTIONS.forEach(([action, slideType]) => {
+    test(`${action} sets the selected cell's slide type and a rerun clears it`, async (t) => {
+        const cells = [cell("Alpha", undefined), cell("Bravo", undefined)];
+        const rise = await loadRise({ cells: cells });
+        t.after(rise.close);
+
+        rise.run(action);
+        assert.equal(rise.cells[0].metadata.slideshow.slide_type, slideType);
+        assert.equal(rise.cells[1].metadata.slideshow, undefined);
+
+        rise.run(action);
+        assert.equal(rise.cells[0].metadata.slideshow.slide_type, "");
+    });
+});
