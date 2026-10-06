@@ -191,3 +191,53 @@ test("auto-select finds the code cell when the notebook starts with a fragment",
 
     assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
 });
+
+// Config layers from lowest to highest precedence, each with the theme it sets.
+const CONFIG_LAYERS = [
+    ["nbconfig livereveal", "beige", (config, theme) => (config.sections.livereveal = { theme })],
+    ["nbconfig rise", "blood", (config, theme) => (config.sections.rise = { theme })],
+    ["notebook config rise", "league", (config, theme) => (config.notebookConfig.rise = { theme })],
+    ["metadata livereveal", "moon", (config, theme) => (config.metadata.livereveal = { theme })],
+    ["metadata rise", "night", (config, theme) => (config.metadata.rise = { theme })],
+];
+
+test("without any config the slideshow uses the simple theme", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.ok($("body").hasClass("theme-simple"));
+    assert.match($("link#theme").attr("href"), /reveal\.js\/css\/theme\/simple\.css$/);
+});
+
+CONFIG_LAYERS.forEach(([layerName, layerTheme], top) => {
+    test(`${layerName} takes precedence over the defaults and every lower layer`, async (t) => {
+        const config = { sections: {}, notebookConfig: {}, metadata: {} };
+        CONFIG_LAYERS.slice(0, top + 1).forEach(([, theme, apply]) => apply(config, theme));
+        const rise = await loadRise({ cells: [cell("Alpha", "slide")], ...config });
+        t.after(rise.close);
+        const { $ } = rise;
+
+        rise.run("RISE:slideshow");
+
+        const bodyClasses = $("body").attr("class").split(/\s+/);
+        const themes = bodyClasses.filter((name) => name.startsWith("theme-"));
+        assert.deepEqual(themes, [`theme-${layerTheme}`]);
+    });
+});
+
+test("nested settings from different config layers merge", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        sections: { rise: { shortcuts: { slideshow: "alt-q" } } },
+        metadata: { rise: { shortcuts: { "toggle-slide": "shift-x" } } },
+    });
+    t.after(rise.close);
+
+    const bindings = rise.shortcuts.command.bindings;
+    assert.equal(bindings.get("alt-q"), "RISE:slideshow");
+    assert.equal(bindings.get("shift-x"), "RISE:toggle-slide");
+    assert.equal(bindings.get("shift-b"), "RISE:toggle-subslide");
+});
