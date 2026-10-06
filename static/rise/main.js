@@ -856,9 +856,9 @@ define([
 
     let command_shortcuts = Jupyter.keyboard_manager.command_shortcuts;
     let edit_shortcuts = Jupyter.keyboard_manager.edit_shortcuts;
-    let reveal_bindings = updateRevealBindings(reveal_default_bindings);
 
     if (mode === 'reveal_mode') {
+      let reveal_bindings = updateRevealBindings(reveal_default_bindings);
       rebind(command_shortcuts, "shift-enter", "RISE:smart-exec");
       rebind(edit_shortcuts, "shift-enter", "RISE:smart-exec");
       // add all reveal.js and plugin bindings to jupyter
