@@ -46,11 +46,6 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 packages = ["nbclassic_extras"]
 
-# Each extension maps its static/<name>/ directory to share/jupyter/nbextensions/<name> and its
-# jupyter-config/notebook.d/<name>.json to etc/jupyter/nbconfig/notebook.d/, so a plain pip
-# install enables it with no jupyter nbextension command.
-[tool.hatch.build.targets.wheel.shared-data]
-
 [tool.ruff]
 target-version = "py312"
 line-length = 100
