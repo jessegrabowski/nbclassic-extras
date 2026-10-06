@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shutil
@@ -33,6 +34,17 @@ class NbclassicServer:
             " return !!k && k.is_connected() && !!k.info_reply; }",
             timeout=45000,
         )
+
+    def shut_down_sessions(self):
+        """Delete every notebook session, shutting down its kernel."""
+        sessions_url = f"http://localhost:{self.port}/api/sessions"
+        with urllib.request.urlopen(f"{sessions_url}?token={TOKEN}") as response:
+            sessions = json.loads(response.read())
+        for session in sessions:
+            request = urllib.request.Request(
+                f"{sessions_url}/{session['id']}?token={TOKEN}", method="DELETE"
+            )
+            urllib.request.urlopen(request).close()
 
 
 def free_port():
@@ -109,7 +121,8 @@ def browser():
 
 
 @pytest.fixture
-def page(browser):
+def page(browser, nbclassic_server):
     page = browser.new_page()
     yield page
     page.close()
+    nbclassic_server.shut_down_sessions()
