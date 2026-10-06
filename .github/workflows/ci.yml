@@ -42,3 +42,21 @@ jobs:
 
       - name: Run tests
         run: pixi run test -vv --durations=20
+
+  js-tests:
+    name: JS tests
+    needs: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # needed for hatch-vcs
+
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: v0.79.0
+          cache: true
+
+      - name: Run JS tests
+        run: pixi run js-test
