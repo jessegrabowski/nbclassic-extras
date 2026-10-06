@@ -111,3 +111,11 @@ def test_show_buttons_on_startup_false_hides_the_rise_buttons(nbclassic_server, 
 
     expect(page.locator("#exit_b")).to_be_hidden(timeout=5000)
     expect(page.locator("#help_b")).to_be_hidden()
+
+
+def test_autolaunch_enters_the_slideshow_on_load(nbclassic_server, page):
+    metadata = {"rise": {"autolaunch": True}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+
+    expect(page.locator("body")).to_have_class(has_class("rise-enabled"))
+    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Alpha")
