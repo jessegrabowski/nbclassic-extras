@@ -1,7 +1,7 @@
 import re
 
 from playwright.sync_api import expect
-from slideshow import enter_slideshow, markdown
+from slideshow import CURRENT_SUBSLIDE, enter_slideshow, markdown
 
 
 def has_class(name):
@@ -84,3 +84,21 @@ def test_rise_css_and_notebook_css_are_applied_in_the_slideshow(nbclassic_server
         expect(container).to_have_css("border-top-color", "rgb(4, 5, 6)")
     finally:
         rise_css.unlink()
+
+
+def test_scroll_option_makes_a_tall_subslide_scrollable(nbclassic_server, page):
+    tall = "\n\n".join(f"Line {number}" for number in range(80))
+    metadata = {"rise": {"scroll": True}}
+    nbclassic_server.open_notebook(page, [markdown(tall, "slide")], metadata=metadata)
+    enter_slideshow(page)
+
+    expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")
+
+
+def test_tall_subslide_does_not_scroll_by_default(nbclassic_server, page):
+    tall = "\n\n".join(f"Line {number}" for number in range(80))
+    nbclassic_server.open_notebook(page, [markdown(tall, "slide")])
+    enter_slideshow(page)
+    page.wait_for_timeout(500)
+
+    expect(page.locator(CURRENT_SUBSLIDE)).not_to_have_css("overflow-y", "scroll")
