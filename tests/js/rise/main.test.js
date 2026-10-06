@@ -318,3 +318,14 @@ SLIDE_TYPE_ACTIONS.forEach(([action, slideType]) => {
         assert.equal(rise.cells[0].metadata.slideshow.slide_type, "");
     });
 });
+
+test("edit-all and render-all switch every cell between edit and rendered views", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide"), cell("Bravo", "")] });
+    t.after(rise.close);
+
+    rise.run("RISE:edit-all-cells");
+    assert.deepEqual(rise.cells.map((c) => c.rendered), [false, false]);
+
+    rise.run("RISE:render-all-cells");
+    assert.deepEqual(rise.cells.map((c) => c.rendered), [true, true]);
+});
