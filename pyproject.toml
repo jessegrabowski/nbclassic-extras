@@ -7,7 +7,11 @@ name = "nbclassic-extras"
 dynamic = ["version"]
 requires-python = ">=3.12"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = [
+    "LICENSE",
+    "licenses/*",
+    "static/rise/reveal.js/LICENSE",
+]
 readme = {file = "README.md", content-type = "text/markdown"}
 description = "RISE and gist_it nbextensions for nbclassic, with no dependency on the notebook package."
 authors = [
@@ -45,6 +49,12 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["nbclassic_extras"]
+
+# Install each nbextension where nbclassic serves it and enable it through nbconfig, so a plain
+# pip install needs no jupyter nbextension command.
+[tool.hatch.build.targets.wheel.shared-data]
+"static/rise" = "share/jupyter/nbextensions/rise"
+"jupyter-config/notebook.d/rise.json" = "etc/jupyter/nbconfig/notebook.d/rise.json"
 
 [tool.ruff]
 target-version = "py312"
