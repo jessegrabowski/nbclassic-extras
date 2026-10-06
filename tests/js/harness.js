@@ -55,7 +55,7 @@ function makeCells($, specs) {
     const container = $("#notebook-container");
     return specs.map((spec, index) => {
         const element = $('<div class="cell"></div>').text(spec.source).appendTo(container);
-        return {
+        const cell = {
             cell_type: spec.cellType,
             metadata: spec.metadata,
             element: element,
@@ -67,29 +67,55 @@ function makeCells($, specs) {
             unrender() { this.rendered = false; },
             ensure_focused() {},
         };
+        element.data("cell", cell);
+        return cell;
     });
 }
 
-function makeNotebook(cells, metadata, notebookConfig, shortcuts, actions) {
-    return {
-        notebook_name: "slides.ipynb",
-        metadata: metadata,
-        config: configSection(notebookConfig),
-        keyboard_manager: {
-            actions: actions,
-            command_shortcuts: shortcuts.command,
-            edit_shortcuts: shortcuts.edit,
-        },
-        get_cells: () => cells,
+// Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements, which
+// RISE overrides on the prototype. A class per page keeps that override from leaking across tests.
+function makeNotebook($, metadata, notebookConfig, shortcuts, actions) {
+    class FakeNotebook {
+        constructor() {
+            this.container = $("#notebook-container");
+            this.notebook_name = "slides.ipynb";
+            this.metadata = metadata;
+            this.config = configSection(notebookConfig);
+            this.keyboard_manager = {
+                actions: actions,
+                command_shortcuts: shortcuts.command,
+                edit_shortcuts: shortcuts.edit,
+            };
+        }
+
+        get_cell_elements() {
+            return this.container.find(".cell").not(".cell .cell");
+        }
+
+        get_cells() {
+            return this.get_cell_elements().toArray().map((element) => $(element).data("cell"));
+        }
+
         get_selected_index() {
-            const index = cells.findIndex((c) => c.selected);
+            const index = this.get_cells().findIndex((cell) => cell.selected);
             return index === -1 ? null : index;
-        },
-        get_selected_cell: () => cells.find((c) => c.selected) ?? null,
+        }
+
+        get_selected_cell() {
+            return this.get_cells().find((cell) => cell.selected) ?? null;
+        }
+
         select(index) {
-            cells.forEach((c, i) => (i === Number(index) ? c.select() : c.unselect()));
-        },
-    };
+            this.get_cells().forEach((cell, i) => {
+                if (i === Number(index)) {
+                    cell.select();
+                } else {
+                    cell.unselect();
+                }
+            });
+        }
+    }
+    return new FakeNotebook();
 }
 
 function configSection(data) {
@@ -141,11 +167,7 @@ async function loadRise({ cells, metadata = {}, sections = {}, notebookConfig = 
     };
     const shortcuts = { command: new FakeShortcuts(), edit: new FakeShortcuts() };
     const notebookCells = makeCells($, cells);
-    const notebook = makeNotebook(notebookCells,
-                                  metadata,
-                                  notebookConfig,
-                                  shortcuts,
-                                  actionRegistry);
+    const notebook = makeNotebook($, metadata, notebookConfig, shortcuts, actionRegistry);
     const Jupyter = {
         notebook: notebook,
         keyboard_manager: notebook.keyboard_manager,
