@@ -23,7 +23,7 @@ class NbclassicServer:
     notebook_dir: Path
 
     def open_notebook(self, page, cells, metadata=None):
-        """Write ``cells`` to a new notebook, open it in ``page``, wait for a live kernel; return its name."""
+        """Open ``cells`` as a new notebook in ``page``, wait for its kernel, return its name."""
         notebook = nbformat.v4.new_notebook(cells=cells, metadata=metadata or {})
         name = f"{os.urandom(4).hex()}.ipynb"
         nbformat.write(notebook, self.notebook_dir / name)
@@ -37,7 +37,7 @@ class NbclassicServer:
         return name
 
     def patch_nbconfig(self, section, values):
-        """Merge ``values`` into the server's nbconfig ``section``; a value of None removes its key."""
+        """Merge ``values`` into nbconfig ``section``, where a value of None removes the key."""
         request = urllib.request.Request(
             f"http://localhost:{self.port}/api/config/{section}?token={TOKEN}",
             data=json.dumps(values).encode(),
@@ -65,7 +65,7 @@ def free_port():
 
 
 def wait_until_up(port, timeout, log_path):
-    """Block until the Jupyter server on ``port`` answers ``/api/status``; raise with its log if not."""
+    """Block until the server on ``port`` answers ``/api/status``, or raise with its log."""
     deadline = time.time() + timeout
     url = f"http://localhost:{port}/api/status?token={TOKEN}"
     while time.time() < deadline:
@@ -94,7 +94,7 @@ def jupyter_home_serving_the_repo(home):
 
 @pytest.fixture(scope="session")
 def nbclassic_server(tmp_path_factory):
-    """Run a real nbclassic server serving this repo's nbextensions; yield its handle."""
+    """Run a real nbclassic server serving this repo's nbextensions and yield its handle."""
     port = free_port()
     notebook_dir = tmp_path_factory.mktemp("notebooks")
     config_dir, data_dir = jupyter_home_serving_the_repo(tmp_path_factory.mktemp("jupyter_home"))
