@@ -106,3 +106,14 @@ def test_s_saves_the_notebook_again_after_exiting(nbclassic_server, page):
         " new Promise((resolve) => setTimeout(() => resolve(false), 5000))])"
     )
     assert saved
+
+
+def test_exit_restores_two_key_shortcuts_under_a_custom_reveal_key(nbclassic_server, page):
+    metadata = {"rise": {"reveal_shortcuts": {"main": {"toggleOverview": "i"}}}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+    exit_slideshow(page)
+
+    expect(page.locator("#exit_b")).to_have_count(0)
+    shortcut = "() => Jupyter.keyboard_manager.command_shortcuts.get_shortcut('i,i')"
+    assert page.evaluate(shortcut) == "jupyter-notebook:interrupt-kernel"

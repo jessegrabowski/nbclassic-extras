@@ -852,6 +852,16 @@ define([
     }
   }
 
+  function restoreShortcutTree(manager, prefix, tree) {
+    for (let [key, node] of Object.entries(tree)) {
+      if (typeof node === 'string') {
+        manager.set_shortcut(`${prefix},${key}`, node);
+      } else {
+        restoreShortcutTree(manager, `${prefix},${key}`, node);
+      }
+    }
+  }
+
   function setupKeys(mode){
 
     let command_shortcuts = Jupyter.keyboard_manager.command_shortcuts;
@@ -873,8 +883,12 @@ define([
     } else if (mode === 'notebook_mode') {
       // undo in reverse order, so a key changed twice ends with its original action
       for (let [manager, key, previous] of replaced_shortcuts.reverse()) {
-        if (previous !== undefined) {
+        if (typeof previous === 'string') {
           manager.set_shortcut(key, previous);
+        } else if (previous !== undefined) {
+          // key began multi-key shortcuts (like 'i' in 'i,i'), which the binding replaced
+          manager.remove_shortcut(key);
+          restoreShortcutTree(manager, key, previous);
         } else if (manager.get_shortcut(key) !== undefined) {
           try {
             manager.remove_shortcut(key);
