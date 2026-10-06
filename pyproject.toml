@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nbclassic-extras"
+dynamic = ["version"]
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+readme = {file = "README.md", content-type = "text/markdown"}
+description = "RISE and gist_it nbextensions for nbclassic, with no dependency on the notebook package."
+authors = [
+  {name = "Jesse Grabowski", email = "jessegrabowski@gmail.com"},
+]
+keywords = ["jupyter", "nbclassic", "nbextensions", "rise", "reveal.js", "gist"]
+dependencies = ["nbclassic>=1.3"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Jupyter",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+
+[project.urls]
+Homepage = "https://github.com/jessegrabowski/nbclassic-extras"
+Repository = "https://github.com/jessegrabowski/nbclassic-extras.git"
+"Bug Tracker" = "https://github.com/jessegrabowski/nbclassic-extras/issues"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "nbclassic_extras/_version.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  '/.github',
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["nbclassic_extras"]
+
+# Each extension maps its static/<name>/ directory to share/jupyter/nbextensions/<name> and its
+# jupyter-config/notebook.d/<name>.json to etc/jupyter/nbconfig/notebook.d/, so a plain pip
+# install enables it with no jupyter nbextension command.
+[tool.hatch.build.targets.wheel.shared-data]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[tool.pixi.dependencies]
+python = ">=3.12"
+nbclassic = ">=1.3"
+
+[tool.pixi.pypi-dependencies]
+nbclassic-extras = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }

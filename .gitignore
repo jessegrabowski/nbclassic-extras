@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+.venv/
+.pixi/
+.DS_Store
+node_modules/
+.idea/
+.vscode/
+.coverage*
+coverage.xml
+nbclassic_extras/_version.py
