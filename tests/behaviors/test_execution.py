@@ -1,6 +1,6 @@
 from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, enter_slideshow, markdown
+from slideshow import CURRENT_SUBSLIDE, enter_slideshow, exit_slideshow, markdown
 
 
 def code(source, slide_type=""):
@@ -139,3 +139,15 @@ def test_new_output_that_overflows_the_slide_makes_it_scrollable(nbclassic_serve
     page.keyboard.press("Shift+Enter")
 
     expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")
+
+
+def test_exit_selects_the_first_cell_of_the_slide_being_shown(nbclassic_server, page):
+    cells = [markdown("Alpha", "slide"), code("x = 1"), markdown("Bravo", "slide"), code("y = 2")]
+    nbclassic_server.open_notebook(page, cells, metadata={"rise": {"auto_select": "none"}})
+    enter_slideshow(page)
+    page.keyboard.press("Space")
+    expect(page.locator(".cell.selected")).to_have_count(0)
+
+    exit_slideshow(page)
+
+    expect(page.locator(".cell.selected")).to_contain_text("Bravo")
