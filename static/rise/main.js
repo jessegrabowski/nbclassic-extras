@@ -1102,8 +1102,10 @@ define([
      */
     let [slide, subslide, fragment] = reveal_current_position();
 
-    // start at slide -1 because we don't impose a starting 'slide'
-    let [slide_counter, subslide_counter, fragment_counter] = [-1, 0, 0];
+    // like markupSlides, slide, subslide and fragment cells only start something new once
+    // the first slide has visible content
+    let [slide_counter, subslide_counter, fragment_counter] = [0, 0, 0];
+    let content_seen = false;
     let result = null;
 
     let cells = notebook.get_cells();
@@ -1112,21 +1114,17 @@ define([
       // ignore skip cells no matter what
       if (is_skip(cell) || is_notes(cell))
         continue;
-      // a slide always increments, even at the start, since we begin at -1
-      if (is_slide(cell)) {
+      if (content_seen && is_slide(cell)) {
         slide_counter += 1;
         subslide_counter = 0;
       }
-      // if we see anything else then we're on a visible slide
-      // that has to be at least 0
-      slide_counter = Math.max(slide_counter, 0);
-      if (is_subslide(cell)) {
+      if (content_seen && is_subslide(cell)) {
         subslide_counter += 1;
       }
 
       if ((slide_counter == slide) && (subslide_counter == subslide)) {
         // keep count of fragments but only on current slide
-        if (is_fragment(cell)) {
+        if (content_seen && is_fragment(cell)) {
           fragment_counter += 1;
         }
         /* we're on the right slide
@@ -1141,6 +1139,7 @@ define([
 	  return index;
         }
       }
+      content_seen = true;
     }
     // for consistency with previous implementations
     return null;

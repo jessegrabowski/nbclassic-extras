@@ -167,3 +167,27 @@ test("exiting keeps notebook order when a notes cell follows a fragment", async 
 
     assert.deepEqual(cellTexts($, "#notebook-container"), ["Alpha", "Bravo", "Spoken", "Charlie"]);
 });
+
+test("auto-select finds the code cell when the notebook starts with a subslide", async (t) => {
+    const cells = [cell("Alpha", "subslide"), cell("x = 1", "", "code")];
+    const metadata = { rise: { auto_select_timeout: 0 } };
+    const rise = await loadRise({ cells: cells, metadata: metadata });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+    await rise.idle(20);
+
+    assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
+});
+
+test("auto-select finds the code cell when the notebook starts with a fragment", async (t) => {
+    const cells = [cell("Alpha", "fragment"), cell("x = 1", "", "code")];
+    const metadata = { rise: { auto_select_timeout: 0 } };
+    const rise = await loadRise({ cells: cells, metadata: metadata });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+    await rise.idle(20);
+
+    assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
+});
