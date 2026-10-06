@@ -345,15 +345,15 @@ define([
     return selected_cell_slide;
   }
 
+  // a sync still pending at exit would size the notebook container as a slide again
+  let pending_sync = null;
+
   /* Set the #slide-x-y part of the URL to control where the slideshow will start.
    * N.B. We do this instead of using Reveal.slide() after reveal initialises,
    * because that leaves one slide clearly visible on screen for a moment before
    * changing to the one we want. By changing the URL before setting up reveal,
    * the slideshow really starts on the desired slide.
    */
-  // a sync still pending at exit would size the notebook container as a slide again
-  let pending_sync = null;
-
   function setStartingSlide(selected) {
 
     let start_slideshow = complete_config.start_slideshow_at;
