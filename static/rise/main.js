@@ -836,43 +836,54 @@ define([
   }
   
 
+  // [shortcut manager, key, previous action] for every binding the slideshow changed
+  let replaced_shortcuts = [];
+
+  function rebind(manager, key, action) {
+    let previous = manager.get_shortcut(key);
+    if (action === null && previous === undefined) {
+      return;
+    }
+    replaced_shortcuts.push([manager, key, previous]);
+    if (action === null) {
+      manager.remove_shortcut(key);
+    } else {
+      manager.set_shortcut(key, action);
+    }
+  }
+
   function setupKeys(mode){
-    
-    let key_str;
+
+    let command_shortcuts = Jupyter.keyboard_manager.command_shortcuts;
+    let edit_shortcuts = Jupyter.keyboard_manager.edit_shortcuts;
     let reveal_bindings = updateRevealBindings(reveal_default_bindings);
-    
-    // Lets setup some specific keys for the reveal_mode
+
     if (mode === 'reveal_mode') {
-      Jupyter.keyboard_manager.command_shortcuts.set_shortcut("shift-enter", "RISE:smart-exec");
-      Jupyter.keyboard_manager.edit_shortcuts.set_shortcut("shift-enter", "RISE:smart-exec");
-      // Save the f keyboard event for the Reveal fullscreen action
-      // see also #375
-      // reveal.js and chalkboard key bindings
-      // console.log(`complete_config in setupKeys: ${JSON.stringify(complete_config)}`);
-      
-      // add all reveal.js bindings to jupyter
+      rebind(command_shortcuts, "shift-enter", "RISE:smart-exec");
+      rebind(edit_shortcuts, "shift-enter", "RISE:smart-exec");
+      // add all reveal.js and plugin bindings to jupyter
       for (const module of Object.keys(reveal_bindings)){
         for (const action of Object.keys(reveal_bindings[module])){
-          key_str = reveal_bindings[module][action];
-          Jupyter.keyboard_manager.command_shortcuts.set_shortcut(key_str, `RISE:${action}`);
-          // console.log(`Setup jupyter keybinding: ${key_str}, RISE:${action}.`);
+          rebind(command_shortcuts, reveal_bindings[module][action], `RISE:${action}`);
         }
       }
-      try {
-        Jupyter.keyboard_manager.command_shortcuts.remove_shortcut("f");
-        Jupyter.keyboard_manager.command_shortcuts.set_shortcut("shift-f", "jupyter-notebook:find-and-replace");
-      } catch(error) {
-        console.log(`entering RISE : could not remove shortcut 'f' - ignored`);
-      }
+      // Save the f keyboard event for the Reveal fullscreen action, see also #375
+      rebind(command_shortcuts, "f", null);
+      rebind(command_shortcuts, "shift-f", "jupyter-notebook:find-and-replace");
     } else if (mode === 'notebook_mode') {
-      Jupyter.keyboard_manager.command_shortcuts.set_shortcut("shift-enter", "jupyter-notebook:run-cell-and-select-next");
-      Jupyter.keyboard_manager.edit_shortcuts.set_shortcut("shift-enter", "jupyter-notebook:run-cell-and-select-next");
-      try {      
-        Jupyter.keyboard_manager.command_shortcuts.remove_shortcut("shift-f");
-        Jupyter.keyboard_manager.command_shortcuts.set_shortcut("f", "jupyter-notebook:find-and-replace");
-      } catch(error) {
-        console.log(`exiting RISE : could not remove shortcut 'shift-f' - ignored`);
+      // undo in reverse order, so a key changed twice ends with its original action
+      for (let [manager, key, previous] of replaced_shortcuts.reverse()) {
+        if (previous !== undefined) {
+          manager.set_shortcut(key, previous);
+        } else if (manager.get_shortcut(key) !== undefined) {
+          try {
+            manager.remove_shortcut(key);
+          } catch (error) {
+            // remove_shortcut normalizes '?' to '/', so a raw '?' binding cannot be removed
+          }
+        }
       }
+      replaced_shortcuts = [];
     }
   }
 

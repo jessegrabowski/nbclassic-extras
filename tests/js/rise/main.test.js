@@ -393,3 +393,34 @@ test("exiting clears the skip class from every skip cell", async (t) => {
 
     assert.equal($(".reveal-skip").length, 0);
 });
+
+// "?" is left out: nbclassic's remove_shortcut normalizes it to "/", so it cannot be unbound.
+test("exiting restores every shortcut the slideshow rebound", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+    const command = () => {
+        const bindings = Object.fromEntries(rise.shortcuts.command.bindings);
+        delete bindings["?"];
+        return bindings;
+    };
+    const edit = () => Object.fromEntries(rise.shortcuts.edit.bindings);
+    const before = { command: command(), edit: edit() };
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual({ command: command(), edit: edit() }, before);
+});
+
+test("exiting keeps a custom shift-enter binding", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+    rise.shortcuts.command.set_shortcut("shift-enter", "custom:run");
+    rise.shortcuts.edit.set_shortcut("shift-enter", "custom:run");
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+
+    assert.equal(rise.shortcuts.command.get_shortcut("shift-enter"), "custom:run");
+    assert.equal(rise.shortcuts.edit.get_shortcut("shift-enter"), "custom:run");
+});
