@@ -124,3 +124,30 @@ test("dash and unset slide types are regular cells", async (t) => {
         "smart_exec_slide",
     ]);
 });
+
+test("smart-exec tags look past notes and skip cells to the next visible cell", async (t) => {
+    const cells = [
+        cell("Alpha", "slide"),
+        cell("Bravo", ""),
+        cell("Spoken", "notes"),
+        cell("Charlie", "fragment"),
+        cell("Skipped", "skip"),
+        cell("Delta", "slide"),
+    ];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    const tags = rise.cells.map((c) => c.smart_exec);
+    assert.deepEqual(tags, [
+        "smart_exec_next",
+        "smart_exec_fragment",
+        "smart_exec_fragment",
+        "smart_exec_slide",
+        "smart_exec_slide",
+        "smart_exec_slide",
+    ]);
+    assert.equal(rise.cells[1].smart_exec_next_fragment[0], $("div.fragment")[0]);
+});
