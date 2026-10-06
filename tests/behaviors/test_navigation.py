@@ -111,3 +111,21 @@ def test_arrow_down_does_not_move(nbclassic_server, page):
     page.keyboard.press("Space")
 
     expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Bravo")
+
+
+def test_end_and_home_jump_to_the_last_and_first_slides(nbclassic_server, page):
+    cells = [
+        markdown("Alpha", "slide"),
+        markdown("Bravo", "subslide"),
+        markdown("Charlie", "slide"),
+        markdown("Delta", "subslide"),
+    ]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    current = page.locator(CURRENT_SUBSLIDE)
+
+    page.keyboard.press("End")
+    expect(current).to_contain_text("Charlie")
+
+    page.keyboard.press("Home")
+    expect(current).to_contain_text("Alpha")
