@@ -16,6 +16,8 @@ def enter_slideshow(page):
     page.click("#RISE")
     expect(page.locator("body")).to_have_class(RISE_ENABLED)
     expect(page.locator("div.reveal")).to_have_class(READY)
+    # reveal stays "ready" across entries; the slide hash is written once each entry is set up
+    page.wait_for_function("() => location.hash.startsWith('#/slide-')")
 
 
 def exit_slideshow(page):
