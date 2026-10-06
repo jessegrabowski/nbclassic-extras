@@ -283,3 +283,16 @@ test("the overlay option replaces header, backimage and footer", async (t) => {
     assert.equal($("#rise-overlay > #custom").text(), "Mine");
     assert.equal($("#rise-header").length, 0);
 });
+
+test("re-entering the slideshow does not add a second set of reveal listeners", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+
+    for (const name of ["ready", "slidechanged", "fragmentshown", "fragmenthidden"]) {
+        assert.equal(rise.revealListenerCount(name), 1, name);
+    }
+});

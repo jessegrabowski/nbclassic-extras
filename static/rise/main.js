@@ -482,6 +482,21 @@ define([
     $('div#rise-overlay').remove();
   }
    
+  // listeners RISE adds to reveal, removed on exit so re-entering does not stack a second set
+  let reveal_listeners = [];
+
+  function addRevealListener(name, handler) {
+    Reveal.addEventListener(name, handler);
+    reveal_listeners.push([name, handler]);
+  }
+
+  function removeRevealListeners() {
+    for (let [name, handler] of reveal_listeners) {
+      Reveal.removeEventListener(name, handler);
+    }
+    reveal_listeners = [];
+  }
+
   function toggleAllRiseButtons() {
     $('#help_b,#exit_b,#toggle-chalkboard,#toggle-notes').fadeToggle()
   }
@@ -639,24 +654,24 @@ define([
                 Reveal.initialized = true;
               }
 
-              Reveal.addEventListener('ready', function(event) {
+              addRevealListener('ready', function(event) {
                 Unselecter();
                 // check and set the scrolling slide when you start the whole thing
                 setScrollingSlide();
                 autoSelectHook();
               });
 
-              Reveal.addEventListener('slidechanged', function(event) {
+              addRevealListener('slidechanged', function(event) {
                 Unselecter();
                 // check and set the scrolling slide every time the slide change
                 setScrollingSlide();
                 autoSelectHook();
               });
 
-              Reveal.addEventListener('fragmentshown', function(event) {
+              addRevealListener('fragmentshown', function(event) {
                 autoSelectHook();
               });
-              Reveal.addEventListener('fragmenthidden', function(event) {
+              addRevealListener('fragmenthidden', function(event) {
                 autoSelectHook();
               });
 
@@ -1010,6 +1025,7 @@ define([
   function Remover() {
     Reveal.configure({minScale: 1.0});
     Reveal.removeEventListeners();
+    removeRevealListeners();
     $('body').removeClass("rise-enabled");
     let theme = complete_config.theme;
     $('body').removeClass(`theme-${theme}`);

@@ -162,9 +162,12 @@ function makeReveal(window) {
         addEventListener(name, callback) {
             listeners.push({ name: name, callback: callback });
         },
-        removeEventListeners() {
-            listeners = [];
+        removeEventListener(name, callback) {
+            listeners = listeners.filter((l) => l.name !== name || l.callback !== callback);
         },
+        listenerCount: (name) => listeners.filter((listener) => listener.name === name).length,
+        // Like reveal's, this unbinds reveal's own input handlers and leaves added listeners alone.
+        removeEventListeners() {},
         sync() {},
         slide(h, v) {
             current = window.document.getElementById(`slide-${h}-${v || 0}`);
@@ -252,6 +255,7 @@ async function loadRise({
             }
             action.handler();
         },
+        revealListenerCount: (name) => window.Reveal.listenerCount(name),
         finishNotebookLoad() {
             notebook.metadata = metadata;
             notebook._fully_loaded = true;
