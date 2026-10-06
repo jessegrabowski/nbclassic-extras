@@ -1,6 +1,6 @@
 from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, enter_slideshow
+from slideshow import CURRENT_SUBSLIDE, enter_slideshow, markdown
 
 
 def code(source, slide_type=""):
@@ -73,3 +73,34 @@ def test_shift_enter_before_a_shown_fragment_moves_into_it(nbclassic_server, pag
     page.keyboard.press("Shift+Enter")
 
     expect(selected_cell_text(page)).to_contain_text("print('second')")
+
+
+def test_auto_select_code_selects_the_first_code_cell_of_the_slide(nbclassic_server, page):
+    cells = [markdown("Alpha", "slide"), code("x = 1"), markdown("Bravo", "slide"), code("y = 2")]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+
+    page.keyboard.press("Space")
+
+    expect(selected_cell_text(page)).to_contain_text("y = 2")
+
+
+def test_auto_select_first_selects_the_first_cell_of_any_type(nbclassic_server, page):
+    cells = [markdown("Alpha", "slide"), code("x = 1"), markdown("Bravo", "slide"), code("y = 2")]
+    nbclassic_server.open_notebook(page, cells, metadata={"rise": {"auto_select": "first"}})
+    enter_slideshow(page)
+
+    page.keyboard.press("Space")
+
+    expect(page.locator(".cell.selected")).to_contain_text("Bravo")
+
+
+def test_auto_select_none_leaves_no_cell_selected(nbclassic_server, page):
+    cells = [markdown("Alpha", "slide"), code("x = 1"), markdown("Bravo", "slide"), code("y = 2")]
+    nbclassic_server.open_notebook(page, cells, metadata={"rise": {"auto_select": "none"}})
+    enter_slideshow(page)
+
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1000)
+
+    expect(page.locator(".cell.selected")).to_have_count(0)
