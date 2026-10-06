@@ -354,3 +354,21 @@ test("a custom shortcut replaces its default and an empty one unbinds it", async
     assert.equal(bindings.has("shift-i"), false);
     assert.equal(bindings.has(""), false);
 });
+
+test("inside the slideshow the reveal and plugin actions are bound to their keys", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+
+    const command = Object.fromEntries(rise.shortcuts.command.bindings);
+    assert.equal(command["shift-enter"], "RISE:smart-exec");
+    assert.equal(rise.shortcuts.edit.bindings.get("shift-enter"), "RISE:smart-exec");
+    assert.equal(command.home, "RISE:firstSlide");
+    assert.equal(command.end, "RISE:lastSlide");
+    assert.equal(command.w, "RISE:toggleOverview");
+    assert.equal(command["?"], "RISE:riseHelp");
+    assert.equal(command.t, "RISE:openNotes");
+    assert.equal(command["["], "RISE:toggleChalkboard");
+    assert.equal(command["shift-f"], "jupyter-notebook:find-and-replace");
+});
