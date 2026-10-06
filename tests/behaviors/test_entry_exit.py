@@ -87,3 +87,22 @@ def test_exiting_right_after_entering_leaves_the_notebook_unsized(nbclassic_serv
 
     container = page.locator("#notebook-container")
     assert (container.get_attribute("style") or "").strip() == ""
+
+
+def test_s_saves_the_notebook_again_after_exiting(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
+    enter_slideshow(page)
+    exit_slideshow(page)
+
+    page.evaluate(
+        "() => { window.notebookSaved = new Promise((resolve) =>"
+        " Jupyter.notebook.events.one('notebook_saved.Notebook', resolve)); }"
+    )
+    page.keyboard.press("Escape")
+    page.keyboard.press("s")
+
+    saved = page.evaluate(
+        "() => Promise.race([window.notebookSaved.then(() => true),"
+        " new Promise((resolve) => setTimeout(() => resolve(false), 5000))])"
+    )
+    assert saved
