@@ -56,3 +56,13 @@ def test_width_option_sizes_the_slides(nbclassic_server, page):
     enter_slideshow(page)
 
     expect(page.locator("#notebook-container.slides")).to_have_css("width", "800px")
+
+
+def test_header_and_footer_options_show_on_the_slide(nbclassic_server, page):
+    metadata = {"rise": {"header": "<b>Course title</b>", "footer": "<i>Page footer</i>"}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+
+    expect(page.locator("#rise-header")).to_have_text("Course title")
+    expect(page.locator("#rise-footer")).to_have_text("Page footer")
+    expect(page.locator("#rise-header")).to_be_visible()

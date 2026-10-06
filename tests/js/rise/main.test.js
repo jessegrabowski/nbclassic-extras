@@ -257,3 +257,29 @@ test("metadata config applies when the notebook finishes loading after RISE", as
 
     assert.ok($("body").hasClass("theme-night"));
 });
+
+test("header, backimage and footer are added to one overlay in that order", async (t) => {
+    const metadata = { rise: { header: "Top", backimage: "back.png", footer: "Bottom" } };
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    const overlay = $("div.reveal > #rise-overlay");
+    const children = Array.from(overlay.children(), (element) => element.id);
+    assert.deepEqual(children, ["rise-header", "rise-backimage", "rise-footer"]);
+    assert.equal($("#rise-backimage").attr("src"), "back.png");
+});
+
+test("the overlay option replaces header, backimage and footer", async (t) => {
+    const metadata = { rise: { header: "Top", overlay: "<p id='custom'>Mine</p>" } };
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.equal($("#rise-overlay > #custom").text(), "Mine");
+    assert.equal($("#rise-header").length, 0);
+});
