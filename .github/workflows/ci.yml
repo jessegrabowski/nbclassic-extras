@@ -20,3 +20,25 @@ jobs:
           pixi-version: v0.79.0
           run-install: false
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+
+  tests:
+    name: Tests
+    needs: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # needed for hatch-vcs
+
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: v0.79.0
+          cache: true
+
+      - name: Install playwright browsers
+        # --with-deps pulls the OS libraries Chromium needs on a bare ubuntu runner.
+        run: pixi run -- playwright install --with-deps chromium
+
+      - name: Run tests
+        run: pixi run test -vv --durations=20
