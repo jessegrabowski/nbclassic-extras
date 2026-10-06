@@ -100,3 +100,27 @@ test("a notes cell after a fragment goes under the subslide, outside the fragmen
     assert.deepEqual(cellTexts($, "#slide-0-0 > aside.notes"), ["Spoken"]);
     assert.equal($("div.fragment aside.notes").length, 0);
 });
+
+test("dash and unset slide types are regular cells", async (t) => {
+    const cells = [
+        cell("Alpha", "slide"),
+        cell("Bravo", "-"),
+        cell("Charlie", "slide"),
+        cell("Delta", undefined),
+    ];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(cellTexts($, "#slide-0-0"), ["Alpha", "Bravo"]);
+    assert.deepEqual(cellTexts($, "#slide-1-0"), ["Charlie", "Delta"]);
+    const tags = rise.cells.map((c) => c.smart_exec);
+    assert.deepEqual(tags, [
+        "smart_exec_next",
+        "smart_exec_slide",
+        "smart_exec_next",
+        "smart_exec_slide",
+    ]);
+});

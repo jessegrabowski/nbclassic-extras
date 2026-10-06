@@ -174,6 +174,7 @@ async function loadRise({ cells, metadata = {}, sections = {}, notebookConfig = 
 
     return {
         $: $,
+        cells: notebookCells,
         run(actionName) {
             const action = actions.get(actionName);
             if (!action) {
