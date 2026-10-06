@@ -48,3 +48,11 @@ def test_reveal_chrome_options_turn_each_element_off(nbclassic_server, page):
     expect(page.locator(".reveal .progress")).to_have_css("display", "none")
     expect(page.locator(".reveal .slide-number")).to_have_css("display", "none")
     expect(page.locator("div.reveal")).not_to_have_class(has_class("center"))
+
+
+def test_width_option_sizes_the_slides(nbclassic_server, page):
+    metadata = {"rise": {"width": 800}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+
+    expect(page.locator("#notebook-container.slides")).to_have_css("width", "800px")
