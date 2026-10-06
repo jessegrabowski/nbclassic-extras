@@ -645,6 +645,10 @@ define([
               }
 
               if (Reveal.initialized) {
+                // the previous exit hid these inline; reveal sets the display of the ones it
+                // manages again when configured, the others would stay hidden
+                $('.backgrounds, .progress, .controls, .slide-number, .speaker-notes, '
+                  + '.pause-overlay, div#aria-status-div').css('display', '');
                 //delete options["dependencies"];
                 Reveal.configure(options);
                 //console.log("Reveal is already initialized and is being configured");

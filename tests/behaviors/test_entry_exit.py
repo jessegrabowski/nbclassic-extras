@@ -51,3 +51,14 @@ def test_exit_keeps_notebook_order_when_notes_follow_a_fragment(nbclassic_server
 
     order = page.evaluate("() => Jupyter.notebook.get_cells().map((cell) => cell.get_text())")
     assert order == ["Alpha", "Bravo", "Spoken", "Charlie"]
+
+
+def test_pause_overlay_works_after_reentering(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
+    enter_slideshow(page)
+    exit_slideshow(page)
+    enter_slideshow(page)
+
+    page.keyboard.press("/")
+
+    expect(page.locator(".pause-overlay")).to_be_visible()
