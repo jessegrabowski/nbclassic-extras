@@ -1,6 +1,6 @@
 from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, enter_slideshow, exit_slideshow, markdown
+from slideshow import CURRENT_SUBSLIDE, RISE_ENABLED, enter_slideshow, exit_slideshow, markdown
 
 
 def test_rise_button_enters_and_exits_slideshow(nbclassic_server, page):
@@ -62,3 +62,17 @@ def test_pause_overlay_works_after_reentering(nbclassic_server, page):
     page.keyboard.press("/")
 
     expect(page.locator(".pause-overlay")).to_be_visible()
+
+
+def test_reentering_keeps_every_rise_button_hidden_when_startup_hides_them(nbclassic_server, page):
+    metadata = {"rise": {"show_buttons_on_startup": False, "enable_chalkboard": True}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+    expect(page.locator("#toggle-chalkboard")).to_be_hidden(timeout=5000)
+    page.keyboard.press("Alt+r")
+    expect(page.locator("body")).not_to_have_class(RISE_ENABLED)
+    enter_slideshow(page)
+    page.wait_for_timeout(3000)
+
+    expect(page.locator("#exit_b")).to_be_hidden()
+    expect(page.locator("#toggle-chalkboard")).to_be_hidden()

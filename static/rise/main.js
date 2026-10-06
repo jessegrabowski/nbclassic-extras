@@ -497,8 +497,10 @@ define([
     reveal_listeners = [];
   }
 
+  const RISE_BUTTONS = '#help_b,#exit_b,#toggle-chalkboard,#toggle-notes';
+
   function toggleAllRiseButtons() {
-    $('#help_b,#exit_b,#toggle-chalkboard,#toggle-notes').fadeToggle()
+    $(RISE_BUTTONS).fadeToggle()
   }
   
   function Revealer(selected_slide) {
@@ -649,6 +651,8 @@ define([
                 // manages again when configured, the others would stay hidden
                 $('.backgrounds, .progress, .controls, .slide-number, .speaker-notes, '
                   + '.pause-overlay, div#aria-status-div').css('display', '');
+                // chalkboard buttons outlive the slideshow, so start each entry from shown
+                $('#toggle-chalkboard, #toggle-notes').show();
                 //delete options["dependencies"];
                 Reveal.configure(options);
                 //console.log("Reveal is already initialized and is being configured");
@@ -688,7 +692,7 @@ define([
 
               if (! complete_config.show_buttons_on_startup) {
                 /* safer, and nicer too, to wait for reveal extensions to start */
-                setTimeout(toggleAllRiseButtons, 2000);
+                setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
               }
             });
   }
