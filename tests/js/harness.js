@@ -128,15 +128,25 @@ function configSection(data) {
     return { data: data, loaded: Promise.resolve(), load() {} };
 }
 
-// Holds the slide reveal is showing, so RISE's own lookups of the current slide work. Tests never
-// assert on it: the reveal API changes when RISE moves to reveal.js 6.
+// Holds the slide reveal is showing and fires its ready event, so RISE's own lookups and
+// listeners work. Tests never assert on it: the reveal API changes when RISE moves to reveal.js 6.
 function makeReveal(window) {
     let current = null;
+    let listeners = [];
     return {
-        initialize() {},
+        initialize() {
+            const fireReady = () => listeners
+                .filter((listener) => listener.name === "ready")
+                .forEach((listener) => listener.callback());
+            window.setTimeout(fireReady, 0);
+        },
         configure() {},
-        addEventListener() {},
-        removeEventListeners() {},
+        addEventListener(name, callback) {
+            listeners.push({ name: name, callback: callback });
+        },
+        removeEventListeners() {
+            listeners = [];
+        },
         sync() {},
         slide(h, v) {
             current = window.document.getElementById(`slide-${h}-${v || 0}`);
@@ -210,6 +220,7 @@ async function loadRise({ cells, metadata = {}, sections = {}, notebookConfig = 
             }
             action.handler();
         },
+        idle: (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
         close: () => window.close(),
     };
 }
