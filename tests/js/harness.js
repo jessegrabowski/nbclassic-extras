@@ -105,8 +105,14 @@ function makeNotebook($, metadata, notebookConfig, shortcuts, actions) {
             return this.get_cells().find((cell) => cell.selected) ?? null;
         }
 
+        // Same validity check as nbclassic's is_valid_cell_index: null or out of range keeps the
+        // selection, and numeric strings (RISE passes for...in keys) count as indices.
         select(index) {
-            this.get_cells().forEach((cell, i) => {
+            const cells = this.get_cells();
+            if (index === null || !(index >= 0 && index < cells.length)) {
+                return;
+            }
+            cells.forEach((cell, i) => {
                 if (i === Number(index)) {
                     cell.select();
                 } else {
