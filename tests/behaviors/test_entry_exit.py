@@ -31,6 +31,7 @@ def test_exit_restores_cell_order_and_editing(nbclassic_server, page):
     expect(restored.nth(2)).to_contain_text("Spoken")
     expect(restored.nth(3)).to_contain_text("x = 1")
     expect(restored.nth(1)).to_be_visible()
+    expect(page.locator(".reveal-skip")).to_have_count(0)
 
     restored.nth(3).locator(".CodeMirror").click()
     page.keyboard.press("End")

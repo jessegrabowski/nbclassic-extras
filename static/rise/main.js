@@ -1065,9 +1065,9 @@ define([
     $('div#aria-status-div').hide();
 
     let cells = Jupyter.notebook.get_cells();
-    for(let i in cells){
-      $('.cell:nth('+i+')').removeClass('reveal-skip');
-      $('div#notebook-container').append(cells[i].element);
+    for (let cell of cells) {
+      cell.element.removeClass('reveal-skip');
+      $('div#notebook-container').append(cell.element);
     }
 
     $('div#notebook-container').children('section').remove();

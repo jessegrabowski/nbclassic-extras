@@ -373,3 +373,23 @@ test("inside the slideshow the reveal and plugin actions are bound to their keys
     assert.equal(command["["], "RISE:toggleChalkboard");
     assert.equal(command["shift-f"], "jupyter-notebook:find-and-replace");
 });
+
+test("exiting clears the skip class from every skip cell", async (t) => {
+    const cells = [
+        cell("Alpha", "slide"),
+        cell("First skip", "skip"),
+        cell("Bravo", ""),
+        cell("Second skip", "skip"),
+        cell("Charlie", "slide"),
+        cell("Third skip", "skip"),
+    ];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+    assert.equal($(".reveal-skip").length, 3);
+    rise.run("RISE:slideshow");
+
+    assert.equal($(".reveal-skip").length, 0);
+});
