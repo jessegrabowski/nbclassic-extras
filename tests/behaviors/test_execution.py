@@ -126,3 +126,16 @@ def test_auto_select_fragment_off_keeps_the_first_code_cell_of_the_slide(nbclass
     page.wait_for_timeout(1000)
 
     expect(selected_cell_text(page)).to_contain_text("x = 1")
+
+
+def test_new_output_that_overflows_the_slide_makes_it_scrollable(nbclassic_server, page):
+    cells = [code("for line in range(80):\n    print(line)", "slide")]
+    nbclassic_server.open_notebook(page, cells, metadata={"rise": {"scroll": True}})
+    enter_slideshow(page)
+    expect(page.locator(CURRENT_SUBSLIDE)).not_to_have_css("overflow-y", "scroll")
+    expect(selected_cell_text(page)).to_contain_text("for line")
+
+    page.locator(".cell").nth(0).locator(".CodeMirror").click()
+    page.keyboard.press("Shift+Enter")
+
+    expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")
