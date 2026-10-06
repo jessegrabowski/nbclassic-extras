@@ -66,3 +66,21 @@ def test_header_and_footer_options_show_on_the_slide(nbclassic_server, page):
     expect(page.locator("#rise-header")).to_have_text("Course title")
     expect(page.locator("#rise-footer")).to_have_text("Page footer")
     expect(page.locator("#rise-header")).to_be_visible()
+
+
+def test_rise_css_and_notebook_css_are_applied_in_the_slideshow(nbclassic_server, page):
+    rule = "body.rise-enabled #notebook-container {{ outline: 3px solid {color}; }}\n"
+    rise_css = nbclassic_server.notebook_dir / "rise.css"
+    rise_css.write_text(rule.format(color="rgb(1, 2, 3)"))
+    try:
+        name = nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
+        (nbclassic_server.notebook_dir / name.replace(".ipynb", ".css")).write_text(
+            "body.rise-enabled #notebook-container { border-top: 4px solid rgb(4, 5, 6); }\n"
+        )
+        enter_slideshow(page)
+
+        container = page.locator("#notebook-container")
+        expect(container).to_have_css("outline-color", "rgb(1, 2, 3)")
+        expect(container).to_have_css("border-top-color", "rgb(4, 5, 6)")
+    finally:
+        rise_css.unlink()

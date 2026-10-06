@@ -23,7 +23,7 @@ class NbclassicServer:
     notebook_dir: Path
 
     def open_notebook(self, page, cells, metadata=None):
-        """Write ``cells`` to a new notebook, open it in ``page``, and wait for a live kernel."""
+        """Write ``cells`` to a new notebook, open it in ``page``, wait for a live kernel; return its name."""
         notebook = nbformat.v4.new_notebook(cells=cells, metadata=metadata or {})
         name = f"{os.urandom(4).hex()}.ipynb"
         nbformat.write(notebook, self.notebook_dir / name)
@@ -34,6 +34,7 @@ class NbclassicServer:
             " return !!k && k.is_connected() && !!k.info_reply; }",
             timeout=45000,
         )
+        return name
 
     def patch_nbconfig(self, section, values):
         """Merge ``values`` into the server's nbconfig ``section``; a value of None removes its key."""
