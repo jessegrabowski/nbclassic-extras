@@ -75,6 +75,21 @@ def test_shift_enter_before_a_shown_fragment_moves_into_it(nbclassic_server, pag
     expect(selected_cell_text(page)).to_contain_text("print('second')")
 
 
+def test_shift_enter_on_a_cell_added_during_the_slideshow_moves_on(nbclassic_server, page):
+    cells = [code("print('first')", "slide"), code("print('last')")]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    expect(selected_cell_text(page)).to_contain_text("print('first')")
+
+    page.keyboard.press("b")
+    page.keyboard.press("Enter")
+    page.keyboard.type("print('added')")
+    page.keyboard.press("Shift+Enter")
+
+    expect(page.locator(".cell").nth(1).locator(".output_area")).to_contain_text("added")
+    expect(selected_cell_text(page)).to_contain_text("print('last')")
+
+
 def test_auto_select_code_selects_the_first_code_cell_of_the_slide(nbclassic_server, page):
     cells = [markdown("Alpha", "slide"), code("x = 1"), markdown("Bravo", "slide"), code("y = 2")]
     nbclassic_server.open_notebook(page, cells)
