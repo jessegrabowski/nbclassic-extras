@@ -72,7 +72,8 @@ def jupyter_home_serving_the_repo(home):
     """Build Jupyter config and data dirs that serve and enable the working tree's nbextensions.
 
     An install copies ``static/`` into the environment, so without this a browser runs whatever JS
-    was current when the environment was built.
+    was current when the environment was built. The data dir must go on ``JUPYTER_PATH``: inside an
+    environment, Jupyter searches the environment's own data dir before ``JUPYTER_DATA_DIR``.
     """
     config_dir = home / "config"
     data_dir = home / "data"
@@ -97,6 +98,7 @@ def nbclassic_server(tmp_path_factory):
                 "JUPYTER_TOKEN": TOKEN,
                 "JUPYTER_CONFIG_DIR": str(config_dir),
                 "JUPYTER_DATA_DIR": str(data_dir),
+                "JUPYTER_PATH": str(data_dir),
             },
             stdout=log,
             stderr=subprocess.STDOUT,
