@@ -49,9 +49,23 @@ class FakeEvents {
     }
 }
 
+// nbclassic's default bindings for the keys RISE rebinds; every other key starts unbound.
+const NBCLASSIC_COMMAND_SHORTCUTS = {
+    "shift-enter": "jupyter-notebook:run-cell-and-select-next",
+    s: "jupyter-notebook:save-notebook",
+    q: "jupyter-notebook:close-pager",
+};
+const NBCLASSIC_EDIT_SHORTCUTS = {
+    "shift-enter": "jupyter-notebook:run-cell-and-select-next",
+};
+
 class FakeShortcuts {
-    constructor() {
-        this.bindings = new Map();
+    constructor(defaults) {
+        this.bindings = new Map(Object.entries(defaults));
+    }
+
+    get_shortcut(key) {
+        return this.bindings.get(key);
     }
 
     add_shortcut(key, action) {
@@ -62,8 +76,12 @@ class FakeShortcuts {
         this.bindings.set(key, action);
     }
 
+    // Like nbclassic, removing a key that is not bound is an error, and the key is normalized
+    // first, which turns "?" into "/".
     remove_shortcut(key) {
-        this.bindings.delete(key);
+        if (!this.bindings.delete(key === "?" ? "/" : key)) {
+            throw new Error("trying to remove a non-existent shortcut");
+        }
     }
 }
 
@@ -210,7 +228,10 @@ async function loadRise({
             actions.set(`${prefix}:${name}`, action);
         },
     };
-    const shortcuts = { command: new FakeShortcuts(), edit: new FakeShortcuts() };
+    const shortcuts = {
+        command: new FakeShortcuts(NBCLASSIC_COMMAND_SHORTCUTS),
+        edit: new FakeShortcuts(NBCLASSIC_EDIT_SHORTCUTS),
+    };
     const notebookCells = makeCells($, cells);
     const notebook = makeNotebook($,
                                   metadata,
