@@ -296,6 +296,7 @@ test("re-entering the slideshow does not add a second set of reveal listeners", 
         assert.equal(rise.revealListenerCount(name), 1, name);
     }
 });
+
 const SLIDE_TYPE_ACTIONS = [
     ["RISE:toggle-slide", "slide"],
     ["RISE:toggle-subslide", "subslide"],
