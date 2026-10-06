@@ -283,8 +283,10 @@ define([
       // Move the cell element into the slide <section>
       // N.B. jQuery append takes the element out of the DOM where it was
       if (slide_type === 'notes') {
-        // Notes are wrapped in an <aside> element
-        subslide_section.append(
+        // Notes are wrapped in an <aside> element. It goes in the current fragment, not
+        // directly in the subslide, so the DOM keeps notebook order: exiting re-appends
+        // cells in DOM order, and nbclassic derives its cell list from the DOM.
+        current_fragment.append(
           $('<aside>').addClass('notes').append(cell.element)
         );
       } else {

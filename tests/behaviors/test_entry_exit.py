@@ -36,3 +36,18 @@ def test_exit_restores_cell_order_and_editing(nbclassic_server, page):
     page.keyboard.press("End")
     page.keyboard.type("0")
     expect(restored.nth(3)).to_contain_text("x = 10")
+
+
+def test_exit_keeps_notebook_order_when_notes_follow_a_fragment(nbclassic_server, page):
+    cells = [
+        markdown("Alpha", "slide"),
+        markdown("Bravo", "fragment"),
+        markdown("Spoken", "notes"),
+        markdown("Charlie", "-"),
+    ]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    exit_slideshow(page)
+
+    order = page.evaluate("() => Jupyter.notebook.get_cells().map((cell) => cell.get_text())")
+    assert order == ["Alpha", "Bravo", "Spoken", "Charlie"]

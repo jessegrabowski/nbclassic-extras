@@ -89,7 +89,7 @@ test("a fragment groups the regular cells that follow it", async (t) => {
     assert.deepEqual(cellTexts($, fragments.eq(1)), ["Delta"]);
 });
 
-test("a notes cell after a fragment goes under the subslide, outside the fragment", async (t) => {
+test("a notes cell after a fragment goes inside that fragment", async (t) => {
     const cells = [cell("Alpha", "slide"), cell("Bravo", "fragment"), cell("Spoken", "notes")];
     const rise = await loadRise({ cells: cells });
     t.after(rise.close);
@@ -97,8 +97,7 @@ test("a notes cell after a fragment goes under the subslide, outside the fragmen
 
     rise.run("RISE:slideshow");
 
-    assert.deepEqual(cellTexts($, "#slide-0-0 > aside.notes"), ["Spoken"]);
-    assert.equal($("div.fragment aside.notes").length, 0);
+    assert.deepEqual(cellTexts($, "#slide-0-0 > div.fragment > aside.notes"), ["Spoken"]);
 });
 
 test("dash and unset slide types are regular cells", async (t) => {
@@ -150,4 +149,21 @@ test("smart-exec tags look past notes and skip cells to the next visible cell", 
         "smart_exec_slide",
     ]);
     assert.equal(rise.cells[1].smart_exec_next_fragment[0], $("div.fragment")[0]);
+});
+
+test("exiting keeps notebook order when a notes cell follows a fragment", async (t) => {
+    const cells = [
+        cell("Alpha", "slide"),
+        cell("Bravo", "fragment"),
+        cell("Spoken", "notes"),
+        cell("Charlie", ""),
+    ];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(cellTexts($, "#notebook-container"), ["Alpha", "Bravo", "Spoken", "Charlie"]);
 });
