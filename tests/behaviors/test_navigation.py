@@ -4,6 +4,7 @@ from playwright.sync_api import expect
 from slideshow import CURRENT_SUBSLIDE, enter_slideshow, markdown
 
 VISIBLE = re.compile(r"(^|\s)visible(\s|$)")
+OVERVIEW = re.compile(r"(^|\s)overview(\s|$)")
 
 
 def test_navigation_visits_slides_subslides_and_fragments_in_order(nbclassic_server, page):
@@ -129,3 +130,15 @@ def test_end_and_home_jump_to_the_last_and_first_slides(nbclassic_server, page):
 
     page.keyboard.press("Home")
     expect(current).to_contain_text("Alpha")
+
+
+def test_w_toggles_the_slide_overview(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide"), markdown("Bravo", "slide")])
+    enter_slideshow(page)
+    reveal = page.locator("div.reveal")
+
+    page.keyboard.press("w")
+    expect(reveal).to_have_class(OVERVIEW)
+
+    page.keyboard.press("w")
+    expect(reveal).not_to_have_class(OVERVIEW)
