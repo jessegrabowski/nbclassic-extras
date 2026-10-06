@@ -329,3 +329,28 @@ test("edit-all and render-all switch every cell between edit and rendered views"
     rise.run("RISE:render-all-cells");
     assert.deepEqual(rise.cells.map((c) => c.rendered), [true, true]);
 });
+
+test("the default RISE shortcuts are bound in command mode", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+
+    const bindings = rise.shortcuts.command.bindings;
+    assert.equal(bindings.get("alt-r"), "RISE:slideshow");
+    assert.equal(bindings.get("shift-i"), "RISE:toggle-slide");
+    assert.equal(bindings.get("shift-b"), "RISE:toggle-subslide");
+    assert.equal(bindings.get("shift-g"), "RISE:toggle-fragment");
+});
+
+test("a custom shortcut replaces its default and an empty one unbinds it", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { shortcuts: { slideshow: "alt-q", "toggle-slide": "" } } },
+    });
+    t.after(rise.close);
+
+    const bindings = rise.shortcuts.command.bindings;
+    assert.equal(bindings.get("alt-q"), "RISE:slideshow");
+    assert.equal(bindings.has("alt-r"), false);
+    assert.equal(bindings.has("shift-i"), false);
+    assert.equal(bindings.has(""), false);
+});
