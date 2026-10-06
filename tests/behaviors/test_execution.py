@@ -104,3 +104,25 @@ def test_auto_select_none_leaves_no_cell_selected(nbclassic_server, page):
     page.wait_for_timeout(1000)
 
     expect(page.locator(".cell.selected")).to_have_count(0)
+
+
+def test_auto_select_fragment_selects_the_code_cell_of_the_shown_fragment(nbclassic_server, page):
+    cells = [code("x = 1", "slide"), code("y = 2", "fragment")]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+
+    page.keyboard.press("Space")
+
+    expect(selected_cell_text(page)).to_contain_text("y = 2")
+
+
+def test_auto_select_fragment_off_keeps_the_first_code_cell_of_the_slide(nbclassic_server, page):
+    cells = [code("x = 1", "slide"), code("y = 2", "fragment")]
+    metadata = {"rise": {"auto_select_fragment": False}}
+    nbclassic_server.open_notebook(page, cells, metadata=metadata)
+    enter_slideshow(page)
+
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1000)
+
+    expect(selected_cell_text(page)).to_contain_text("x = 1")
