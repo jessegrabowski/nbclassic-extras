@@ -69,3 +69,22 @@ test("leading notes and skip cells do not count as first-slide content", async (
     assert.deepEqual(cellTexts($, "#slide-0-0"), ["Skipped", "Alpha"]);
     assert.deepEqual(cellTexts($, "#slide-0-0 > aside.notes"), ["Spoken"]);
 });
+
+test("a fragment groups the regular cells that follow it", async (t) => {
+    const cells = [
+        cell("Alpha", "slide"),
+        cell("Bravo", "fragment"),
+        cell("Charlie", ""),
+        cell("Delta", "fragment"),
+    ];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    const fragments = $("#slide-0-0 > div.fragment");
+    assert.equal(fragments.length, 2);
+    assert.deepEqual(cellTexts($, fragments.eq(0)), ["Bravo", "Charlie"]);
+    assert.deepEqual(cellTexts($, fragments.eq(1)), ["Delta"]);
+});
