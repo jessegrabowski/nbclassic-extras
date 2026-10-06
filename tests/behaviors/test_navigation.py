@@ -1,7 +1,7 @@
 import re
 
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, enter_slideshow, markdown
+from slideshow import CURRENT_SUBSLIDE, enter_slideshow, exit_slideshow, markdown
 
 VISIBLE = re.compile(r"(^|\s)visible(\s|$)")
 OVERVIEW = re.compile(r"(^|\s)overview(\s|$)")
@@ -156,3 +156,23 @@ def test_slash_toggles_the_pause_overlay(nbclassic_server, page):
 
     page.keyboard.press("/")
     expect(reveal).not_to_have_class(PAUSED)
+
+
+def test_url_hash_follows_the_current_subslide_and_clears_on_exit(nbclassic_server, page):
+    cells = [
+        markdown("Alpha", "slide"),
+        markdown("Bravo", "subslide"),
+        markdown("Charlie", "slide"),
+    ]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    expect(page).to_have_url(re.compile(r"#/slide-0-0$"))
+
+    page.keyboard.press("Space")
+    expect(page).to_have_url(re.compile(r"#/slide-0-1$"))
+
+    page.keyboard.press("Space")
+    expect(page).to_have_url(re.compile(r"#/slide-1-0$"))
+
+    exit_slideshow(page)
+    page.wait_for_function("() => location.hash === ''", timeout=5000)
