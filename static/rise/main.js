@@ -351,6 +351,9 @@ define([
    * changing to the one we want. By changing the URL before setting up reveal,
    * the slideshow really starts on the desired slide.
    */
+  // a sync still pending at exit would size the notebook container as a slide again
+  let pending_sync = null;
+
   function setStartingSlide(selected) {
 
     let start_slideshow = complete_config.start_slideshow_at;
@@ -369,7 +372,7 @@ define([
     // this patch makes the situation much better,
     // although it is clearly suboptimal to have 
     // to resort to that sort of dirty patch
-    setTimeout(()=>Reveal.sync(), complete_config.sync_timeout);
+    pending_sync = setTimeout(()=>Reveal.sync(), complete_config.sync_timeout);
   }
 
   /* Setup the scrolling in the current slide if the config option is activated
@@ -1032,6 +1035,7 @@ define([
 
   function Remover() {
     Reveal.configure({minScale: 1.0});
+    clearTimeout(pending_sync);
     Reveal.removeEventListeners();
     removeRevealListeners();
     $('body').removeClass("rise-enabled");

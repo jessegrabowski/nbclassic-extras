@@ -76,3 +76,13 @@ def test_reentering_keeps_every_rise_button_hidden_when_startup_hides_them(nbcla
 
     expect(page.locator("#exit_b")).to_be_hidden()
     expect(page.locator("#toggle-chalkboard")).to_be_hidden()
+
+
+def test_exiting_right_after_entering_leaves_the_notebook_unsized(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide"), markdown("Bravo", "slide")])
+    enter_slideshow(page)
+    exit_slideshow(page)
+    page.wait_for_timeout(1000)
+
+    container = page.locator("#notebook-container")
+    assert (container.get_attribute("style") or "").strip() == ""
