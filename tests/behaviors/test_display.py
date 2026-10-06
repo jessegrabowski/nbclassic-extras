@@ -15,7 +15,7 @@ def test_theme_option_loads_the_theme_stylesheet(nbclassic_server, page):
 
     expect(page.locator("body")).to_have_class(has_class("theme-sky"))
     expect(page.locator("link#theme")).to_have_attribute("href", re.compile(r"theme/sky\.css$"))
-    expect(page.locator("body")).to_have_css("background-color", "rgb(247, 251, 252)")
+    expect(page.locator("body")).to_have_css("background-image", re.compile(r"radial-gradient"))
 
 
 def test_transition_option_sets_the_reveal_transition(nbclassic_server, page):
