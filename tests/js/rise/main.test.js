@@ -241,3 +241,19 @@ test("nested settings from different config layers merge", async (t) => {
     assert.equal(bindings.get("shift-x"), "RISE:toggle-slide");
     assert.equal(bindings.get("shift-b"), "RISE:toggle-subslide");
 });
+
+test("metadata config applies when the notebook finishes loading after RISE", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { theme: "night" } },
+        notebookLoaded: false,
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.finishNotebookLoad();
+    await rise.idle(0);
+    rise.run("RISE:slideshow");
+
+    assert.ok($("body").hasClass("theme-night"));
+});

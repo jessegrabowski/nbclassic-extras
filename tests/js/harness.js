@@ -33,6 +33,22 @@ function cell(source, slideType, cellType = "markdown") {
     return { source: source, cellType: cellType, metadata: metadata };
 }
 
+class FakeEvents {
+    constructor() {
+        this.handlers = new Map();
+    }
+
+    one(name, handler) {
+        this.handlers.set(name, [...(this.handlers.get(name) || []), handler]);
+    }
+
+    trigger(name) {
+        const handlers = this.handlers.get(name) || [];
+        this.handlers.delete(name);
+        handlers.forEach((handler) => handler());
+    }
+}
+
 class FakeShortcuts {
     constructor() {
         this.bindings = new Map();
@@ -74,12 +90,14 @@ function makeCells($, specs) {
 
 // Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements, which
 // RISE overrides on the prototype. A class per page keeps that override from leaking across tests.
-function makeNotebook($, metadata, notebookConfig, shortcuts, actions) {
+function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded) {
     class FakeNotebook {
         constructor() {
             this.container = $("#notebook-container");
             this.notebook_name = "slides.ipynb";
-            this.metadata = metadata;
+            this._fully_loaded = loaded;
+            this.metadata = loaded ? metadata : {};
+            this.events = new FakeEvents();
             this.config = configSection(notebookConfig);
             this.keyboard_manager = {
                 actions: actions,
@@ -164,8 +182,16 @@ function makeReveal(window) {
  * @param {object} [options.metadata] - notebook metadata.
  * @param {object} [options.sections] - nbconfig sections by name, e.g. {rise: {...}}.
  * @param {object} [options.notebookConfig] - Jupyter.notebook.config data.
+ * @param {boolean} [options.notebookLoaded] - false holds back the notebook's metadata, as
+ *     nbclassic does while the notebook JSON is still loading, until finishNotebookLoad().
  */
-async function loadRise({ cells, metadata = {}, sections = {}, notebookConfig = {} }) {
+async function loadRise({
+    cells,
+    metadata = {},
+    sections = {},
+    notebookConfig = {},
+    notebookLoaded = true,
+}) {
     const dom = new JSDOM(PAGE, {
         url: "http://localhost:8888/notebooks/slides.ipynb",
         runScripts: "outside-only",
@@ -183,7 +209,12 @@ async function loadRise({ cells, metadata = {}, sections = {}, notebookConfig = 
     };
     const shortcuts = { command: new FakeShortcuts(), edit: new FakeShortcuts() };
     const notebookCells = makeCells($, cells);
-    const notebook = makeNotebook($, metadata, notebookConfig, shortcuts, actionRegistry);
+    const notebook = makeNotebook($,
+                                  metadata,
+                                  notebookConfig,
+                                  shortcuts,
+                                  actionRegistry,
+                                  notebookLoaded);
     const Jupyter = {
         notebook: notebook,
         keyboard_manager: notebook.keyboard_manager,
@@ -220,6 +251,11 @@ async function loadRise({ cells, metadata = {}, sections = {}, notebookConfig = 
                 throw new Error(`no action registered as ${actionName}`);
             }
             action.handler();
+        },
+        finishNotebookLoad() {
+            notebook.metadata = metadata;
+            notebook._fully_loaded = true;
+            notebook.events.trigger("notebook_loaded.Notebook");
         },
         idle: (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
         close: () => window.close(),

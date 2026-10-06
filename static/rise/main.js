@@ -133,11 +133,18 @@ define([
     let nbext_configurator = Jupyter.notebook.config;
     nbext_configurator.load();
 
-    // with Promise.all we can wait for all 3 configs to have loaded
+    // nbclassic loads nbextensions before the notebook itself, so the notebook metadata
+    // read below is empty until the notebook has finished loading
+    let notebook_loaded = Jupyter.notebook._fully_loaded
+        ? Promise.resolve()
+        : new Promise((resolve) => Jupyter.notebook.events.one('notebook_loaded.Notebook', resolve));
+
+    // with Promise.all we can wait for all 3 configs and the notebook to have loaded
     return Promise.all([
       config_section_legacy.loaded,
       config_section.loaded,
       nbext_configurator.loaded,
+      notebook_loaded,
     ]).then(
       // and now we can compute the layered config
       function() {
