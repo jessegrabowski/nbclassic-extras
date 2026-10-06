@@ -3,11 +3,73 @@ from playwright.sync_api import expect
 from slideshow import CURRENT_SUBSLIDE, enter_slideshow
 
 
+def code(source, slide_type=""):
+    return new_code_cell(source, metadata={"slideshow": {"slide_type": slide_type}})
+
+
+def selected_cell_text(page):
+    return page.locator(".cell.selected .input_area")
+
+
 def test_shift_enter_in_slideshow_runs_cell_and_shows_output(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [new_code_cell("print(6 * 7)")])
     enter_slideshow(page)
+    expect(selected_cell_text(page)).to_contain_text("print(6 * 7)")
 
     page.locator(CURRENT_SUBSLIDE).locator(".CodeMirror").click()
     page.keyboard.press("Shift+Enter")
 
     expect(page.locator(CURRENT_SUBSLIDE).locator(".output_area")).to_contain_text("42")
+
+
+def test_shift_enter_moves_to_the_next_cell_on_the_same_slide(nbclassic_server, page):
+    cells = [code("print('first')", "slide"), code("print('second')")]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    expect(selected_cell_text(page)).to_contain_text("print('first')")
+
+    page.locator(".cell").nth(0).locator(".CodeMirror").click()
+    page.keyboard.press("Shift+Enter")
+
+    expect(page.locator(".cell").nth(0).locator(".output_area")).to_contain_text("first")
+    expect(selected_cell_text(page)).to_contain_text("print('second')")
+
+
+def test_shift_enter_on_the_last_cell_of_a_slide_stays_on_that_cell(nbclassic_server, page):
+    cells = [code("print('first')", "slide"), code("print('second')", "slide")]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    expect(selected_cell_text(page)).to_contain_text("print('first')")
+
+    page.locator(".cell").nth(0).locator(".CodeMirror").click()
+    page.keyboard.press("Shift+Enter")
+
+    expect(page.locator(".cell").nth(0).locator(".output_area")).to_contain_text("first")
+    expect(selected_cell_text(page)).to_contain_text("print('first')")
+    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("print('first')")
+
+
+def test_shift_enter_before_a_hidden_fragment_stays_on_the_cell(nbclassic_server, page):
+    cells = [code("print('first')", "slide"), code("print('second')", "fragment")]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    expect(selected_cell_text(page)).to_contain_text("print('first')")
+
+    page.locator(".cell").nth(0).locator(".CodeMirror").click()
+    page.keyboard.press("Shift+Enter")
+
+    expect(page.locator(".cell").nth(0).locator(".output_area")).to_contain_text("first")
+    expect(selected_cell_text(page)).to_contain_text("print('first')")
+
+
+def test_shift_enter_before_a_shown_fragment_moves_into_it(nbclassic_server, page):
+    cells = [code("print('first')", "slide"), code("print('second')", "fragment")]
+    nbclassic_server.open_notebook(page, cells)
+    enter_slideshow(page)
+    page.keyboard.press("Space")
+    expect(selected_cell_text(page)).to_contain_text("print('second')")
+
+    page.locator(".cell").nth(0).locator(".CodeMirror").click()
+    page.keyboard.press("Shift+Enter")
+
+    expect(selected_cell_text(page)).to_contain_text("print('second')")
