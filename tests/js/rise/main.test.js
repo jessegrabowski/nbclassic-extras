@@ -435,3 +435,36 @@ test("exiting keeps the first cell selected when it was selected", async (t) => 
 
     assert.deepEqual(rise.cells.map((c) => c.selected), [true, false]);
 });
+
+// Text of each <kbd> in the help dialog's body.
+function helpKeys(dialog) {
+    return Array.from(dialog.body.find("kbd"), (element) => element.textContent);
+}
+
+test("the help dialog lists the slideshow shortcuts", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+
+    rise.run("RISE:riseHelp");
+
+    const [dialog] = rise.dialogs;
+    assert.equal(dialog.title, "Reveal Shortcuts Help");
+    const keys = helpKeys(dialog);
+    for (const key of ["Space", "Shift", "Enter", "home", "end", "w", "t", "/", ",", "["]) {
+        assert.ok(keys.includes(key), key);
+    }
+});
+
+test("the help dialog shows a customized reveal shortcut instead of the default", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { reveal_shortcuts: { main: { firstSlide: "g" } } } },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:riseHelp");
+
+    const keys = helpKeys(rise.dialogs[0]);
+    assert.ok(keys.includes("g"));
+    assert.equal(keys.includes("home"), false);
+});

@@ -239,11 +239,12 @@ async function loadRise({
                                   shortcuts,
                                   actionRegistry,
                                   notebookLoaded);
+    const dialogs = [];
     const Jupyter = {
         notebook: notebook,
         keyboard_manager: notebook.keyboard_manager,
         toolbar: { add_buttons_group() {} },
-        dialog: { modal() {} },
+        dialog: { modal: (options) => dialogs.push(options) },
         CellToolbar: { rebuild_all() {} },
     };
     const configmod = {
@@ -269,6 +270,7 @@ async function loadRise({
         $: $,
         cells: notebookCells,
         shortcuts: shortcuts,
+        dialogs: dialogs,
         run(actionName) {
             const action = actions.get(actionName);
             if (!action) {
