@@ -102,3 +102,12 @@ def test_tall_subslide_does_not_scroll_by_default(nbclassic_server, page):
     page.wait_for_timeout(500)
 
     expect(page.locator(CURRENT_SUBSLIDE)).not_to_have_css("overflow-y", "scroll")
+
+
+def test_show_buttons_on_startup_false_hides_the_rise_buttons(nbclassic_server, page):
+    metadata = {"rise": {"show_buttons_on_startup": False}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+
+    expect(page.locator("#exit_b")).to_be_hidden(timeout=5000)
+    expect(page.locator("#help_b")).to_be_hidden()
