@@ -35,6 +35,15 @@ class NbclassicServer:
             timeout=45000,
         )
 
+    def patch_nbconfig(self, section, values):
+        """Merge ``values`` into the server's nbconfig ``section``; a value of None removes its key."""
+        request = urllib.request.Request(
+            f"http://localhost:{self.port}/api/config/{section}?token={TOKEN}",
+            data=json.dumps(values).encode(),
+            method="PATCH",
+        )
+        urllib.request.urlopen(request).close()
+
     def shut_down_sessions(self):
         """Delete every notebook session, shutting down its kernel."""
         sessions_url = f"http://localhost:{self.port}/api/sessions"
