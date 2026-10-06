@@ -176,3 +176,24 @@ def test_url_hash_follows_the_current_subslide_and_clears_on_exit(nbclassic_serv
 
     exit_slideshow(page)
     page.wait_for_function("() => location.hash === ''", timeout=5000)
+
+
+def test_slideshow_starts_on_the_slide_of_the_selected_cell(nbclassic_server, page):
+    cells = [markdown("Alpha", "slide"), markdown("Bravo", "slide")]
+    nbclassic_server.open_notebook(page, cells)
+    page.locator(".cell").nth(1).click()
+
+    enter_slideshow(page)
+
+    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Bravo")
+
+
+def test_start_slideshow_at_beginning_ignores_the_selected_cell(nbclassic_server, page):
+    cells = [markdown("Alpha", "slide"), markdown("Bravo", "slide")]
+    metadata = {"rise": {"start_slideshow_at": "beginning"}}
+    nbclassic_server.open_notebook(page, cells, metadata=metadata)
+    page.locator(".cell").nth(1).click()
+
+    enter_slideshow(page)
+
+    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Alpha")
