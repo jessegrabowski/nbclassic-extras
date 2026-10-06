@@ -5,6 +5,7 @@ from slideshow import CURRENT_SUBSLIDE, enter_slideshow, markdown
 
 VISIBLE = re.compile(r"(^|\s)visible(\s|$)")
 OVERVIEW = re.compile(r"(^|\s)overview(\s|$)")
+PAUSED = re.compile(r"(^|\s)paused(\s|$)")
 
 
 def test_navigation_visits_slides_subslides_and_fragments_in_order(nbclassic_server, page):
@@ -142,3 +143,16 @@ def test_w_toggles_the_slide_overview(nbclassic_server, page):
 
     page.keyboard.press("w")
     expect(reveal).not_to_have_class(OVERVIEW)
+
+
+def test_slash_toggles_the_pause_overlay(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
+    enter_slideshow(page)
+    reveal = page.locator("div.reveal")
+
+    page.keyboard.press("/")
+    expect(reveal).to_have_class(PAUSED)
+    expect(page.locator(".pause-overlay")).to_be_visible()
+
+    page.keyboard.press("/")
+    expect(reveal).not_to_have_class(PAUSED)
