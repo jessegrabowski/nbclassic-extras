@@ -24,3 +24,27 @@ def test_transition_option_sets_the_reveal_transition(nbclassic_server, page):
     enter_slideshow(page)
 
     expect(page.locator("div.reveal")).to_have_class(has_class("convex"))
+
+
+def test_reveal_chrome_is_shown_by_default(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide"), markdown("Bravo", "slide")])
+    enter_slideshow(page)
+
+    expect(page.locator(".reveal .controls")).to_have_css("display", "block")
+    expect(page.locator(".reveal .progress")).to_have_css("display", "block")
+    expect(page.locator(".reveal .slide-number")).to_have_css("display", "block")
+    expect(page.locator("div.reveal")).to_have_class(has_class("center"))
+
+
+def test_reveal_chrome_options_turn_each_element_off(nbclassic_server, page):
+    metadata = {
+        "rise": {"controls": False, "progress": False, "slideNumber": False, "center": False}
+    }
+    cells = [markdown("Alpha", "slide"), markdown("Bravo", "slide")]
+    nbclassic_server.open_notebook(page, cells, metadata=metadata)
+    enter_slideshow(page)
+
+    expect(page.locator(".reveal .controls")).to_have_css("display", "none")
+    expect(page.locator(".reveal .progress")).to_have_css("display", "none")
+    expect(page.locator(".reveal .slide-number")).to_have_css("display", "none")
+    expect(page.locator("div.reveal")).not_to_have_class(has_class("center"))
