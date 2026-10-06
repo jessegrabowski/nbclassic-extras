@@ -1317,11 +1317,11 @@ define([
       buttonHelp();
       $('#maintoolbar').addClass('reveal_tagging');
     } else {
-      let current_cell_index =
-          // first use current selection if relevant
-          Jupyter.notebook.get_selected_index()
-      // resort to first cell in visible slide otherwise
-          || reveal_cell_index(Jupyter.notebook);
+      // first use current selection if relevant, the first cell in the visible slide otherwise
+      let current_cell_index = Jupyter.notebook.get_selected_index();
+      if (current_cell_index === null) {
+        current_cell_index = reveal_cell_index(Jupyter.notebook);
+      }
       Remover();
       setupKeys("notebook_mode");
       $('#exit_b').remove();

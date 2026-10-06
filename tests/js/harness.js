@@ -277,6 +277,7 @@ async function loadRise({
             action.handler();
         },
         revealListenerCount: (name) => window.Reveal.listenerCount(name),
+        showSlide: (h, v) => window.Reveal.slide(h, v),
         finishNotebookLoad() {
             notebook.metadata = metadata;
             notebook._fully_loaded = true;

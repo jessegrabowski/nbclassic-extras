@@ -424,3 +424,14 @@ test("exiting keeps a custom shift-enter binding", async (t) => {
     assert.equal(rise.shortcuts.command.get_shortcut("shift-enter"), "custom:run");
     assert.equal(rise.shortcuts.edit.get_shortcut("shift-enter"), "custom:run");
 });
+
+test("exiting keeps the first cell selected when it was selected", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide"), cell("Bravo", "slide")] });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+    rise.showSlide(1, 0);
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(rise.cells.map((c) => c.selected), [true, false]);
+});
