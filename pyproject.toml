@@ -100,12 +100,15 @@ nbclassic-extras = { path = ".", editable = true }
 
 [tool.pixi.feature.test.dependencies]
 pytest = ">=8"
+nodejs = ">=22.12"
 
 [tool.pixi.feature.test.pypi-dependencies]
 playwright = "*"
 
 [tool.pixi.feature.test.tasks]
 test = "pytest"
+js-install = "npm ci"
+js-test = { cmd = "node --test 'tests/js/**/*.test.js'", depends-on = ["js-install"] }
 install-browsers = "playwright install chromium"
 
 [tool.pixi.feature.lint.dependencies]
