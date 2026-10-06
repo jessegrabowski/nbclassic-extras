@@ -88,3 +88,15 @@ test("a fragment groups the regular cells that follow it", async (t) => {
     assert.deepEqual(cellTexts($, fragments.eq(0)), ["Bravo", "Charlie"]);
     assert.deepEqual(cellTexts($, fragments.eq(1)), ["Delta"]);
 });
+
+test("a notes cell after a fragment goes under the subslide, outside the fragment", async (t) => {
+    const cells = [cell("Alpha", "slide"), cell("Bravo", "fragment"), cell("Spoken", "notes")];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(cellTexts($, "#slide-0-0 > aside.notes"), ["Spoken"]);
+    assert.equal($("div.fragment aside.notes").length, 0);
+});
