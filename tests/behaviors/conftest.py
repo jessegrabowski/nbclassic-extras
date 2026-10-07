@@ -22,18 +22,35 @@ class NbclassicServer:
     port: int
     notebook_dir: Path
 
-    def open_notebook(self, page, cells, metadata=None):
-        """Open ``cells`` as a new notebook in ``page``, wait for its kernel, return its name."""
+    def open_notebook(self, page, cells, metadata=None, wait_for_kernel=False):
+        """Open ``cells`` as a new notebook in ``page`` and return its name.
+
+        Parameters
+        ----------
+        page : playwright Page
+            Page to open the notebook in.
+        cells : list of nbformat cells
+            Cells of the new notebook.
+        metadata : dict, optional
+            Notebook metadata. Empty by default.
+        wait_for_kernel : bool, optional
+            Also wait until the kernel is connected, which tests that run code need. False by
+            default, since the wait adds about half a second.
+        """
         notebook = nbformat.v4.new_notebook(cells=cells, metadata=metadata or {})
         name = f"{os.urandom(4).hex()}.ipynb"
         nbformat.write(notebook, self.notebook_dir / name)
 
         page.goto(f"http://localhost:{self.port}/notebooks/{name}?token={TOKEN}")
         page.wait_for_function(
-            "() => { var k = window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel;"
-            " return !!k && k.is_connected() && !!k.info_reply; }",
-            timeout=45000,
+            "() => !!(window.Jupyter && Jupyter.notebook && Jupyter.notebook._fully_loaded)"
         )
+        if wait_for_kernel:
+            page.wait_for_function(
+                "() => { var k = Jupyter.notebook.kernel;"
+                " return !!k && k.is_connected() && !!k.info_reply; }",
+                timeout=45000,
+            )
         return name
 
     def patch_nbconfig(self, section, values):

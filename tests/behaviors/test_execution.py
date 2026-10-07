@@ -11,7 +11,7 @@ def selected_cell_text(page):
 
 
 def test_shift_enter_in_slideshow_runs_cell_and_shows_output(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [new_code_cell("print(6 * 7)")])
+    nbclassic_server.open_notebook(page, [new_code_cell("print(6 * 7)")], wait_for_kernel=True)
     enter_slideshow(page)
     expect(selected_cell_text(page)).to_contain_text("print(6 * 7)")
 
@@ -23,7 +23,7 @@ def test_shift_enter_in_slideshow_runs_cell_and_shows_output(nbclassic_server, p
 
 def test_shift_enter_moves_to_the_next_cell_on_the_same_slide(nbclassic_server, page):
     cells = [code("print('first')", "slide"), code("print('second')")]
-    nbclassic_server.open_notebook(page, cells)
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
     enter_slideshow(page)
     expect(selected_cell_text(page)).to_contain_text("print('first')")
 
@@ -36,7 +36,7 @@ def test_shift_enter_moves_to_the_next_cell_on_the_same_slide(nbclassic_server, 
 
 def test_shift_enter_on_the_last_cell_of_a_slide_stays_on_that_cell(nbclassic_server, page):
     cells = [code("print('first')", "slide"), code("print('second')", "slide")]
-    nbclassic_server.open_notebook(page, cells)
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
     enter_slideshow(page)
     expect(selected_cell_text(page)).to_contain_text("print('first')")
 
@@ -50,7 +50,7 @@ def test_shift_enter_on_the_last_cell_of_a_slide_stays_on_that_cell(nbclassic_se
 
 def test_shift_enter_before_a_hidden_fragment_stays_on_the_cell(nbclassic_server, page):
     cells = [code("print('first')", "slide"), code("print('second')", "fragment")]
-    nbclassic_server.open_notebook(page, cells)
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
     enter_slideshow(page)
     expect(selected_cell_text(page)).to_contain_text("print('first')")
 
@@ -63,7 +63,7 @@ def test_shift_enter_before_a_hidden_fragment_stays_on_the_cell(nbclassic_server
 
 def test_shift_enter_before_a_shown_fragment_moves_into_it(nbclassic_server, page):
     cells = [code("print('first')", "slide"), code("print('second')", "fragment")]
-    nbclassic_server.open_notebook(page, cells)
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
     enter_slideshow(page)
     page.keyboard.press("Space")
     expect(selected_cell_text(page)).to_contain_text("print('second')")
@@ -76,7 +76,7 @@ def test_shift_enter_before_a_shown_fragment_moves_into_it(nbclassic_server, pag
 
 def test_shift_enter_on_a_cell_added_during_the_slideshow_moves_on(nbclassic_server, page):
     cells = [code("print('first')", "slide"), code("print('last')")]
-    nbclassic_server.open_notebook(page, cells)
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
     enter_slideshow(page)
     expect(selected_cell_text(page)).to_contain_text("print('first')")
 
@@ -147,7 +147,9 @@ def test_auto_select_fragment_off_keeps_the_first_code_cell_of_the_slide(nbclass
 
 def test_new_output_that_overflows_the_slide_makes_it_scrollable(nbclassic_server, page):
     cells = [code("for line in range(80):\n    print(line)", "slide")]
-    nbclassic_server.open_notebook(page, cells, metadata={"rise": {"scroll": True}})
+    nbclassic_server.open_notebook(
+        page, cells, metadata={"rise": {"scroll": True}}, wait_for_kernel=True
+    )
     enter_slideshow(page)
     expect(page.locator(CURRENT_SUBSLIDE)).not_to_have_css("overflow-y", "scroll")
     expect(selected_cell_text(page)).to_contain_text("for line")
