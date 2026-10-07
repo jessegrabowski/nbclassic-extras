@@ -120,17 +120,6 @@ def test_tall_subslide_does_not_scroll_by_default(nbclassic_server, page):
     expect(subslide).not_to_have_css("overflow-y", "scroll")
 
 
-def test_show_buttons_on_startup_false_hides_the_rise_buttons(nbclassic_server, page):
-    metadata = {"rise": {"show_buttons_on_startup": False}}
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
-    enter_slideshow(page)
-
-    expect(page.locator("#exit_b")).to_have_count(1)
-    expect(page.locator("#help_b")).to_have_count(1)
-    expect(page.locator("#exit_b")).to_be_hidden(timeout=5000)
-    expect(page.locator("#help_b")).to_be_hidden()
-
-
 def test_autolaunch_enters_the_slideshow_on_load(nbclassic_server, page):
     metadata = {"rise": {"autolaunch": True}}
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)

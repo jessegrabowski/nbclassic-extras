@@ -2,7 +2,6 @@ from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
 from slideshow import (
     CURRENT_SUBSLIDE,
-    RISE_ENABLED,
     enter_slideshow,
     exit_slideshow,
     has_class,
@@ -54,25 +53,8 @@ def test_slash_toggles_the_pause_overlay_after_reentering(nbclassic_server, page
     expect(reveal).to_have_class(has_class("paused"))
     expect(page.locator(".pause-overlay")).to_be_visible()
 
-
     page.keyboard.press("/")
     expect(reveal).not_to_have_class(has_class("paused"))
-
-def test_reentering_keeps_every_rise_button_hidden_when_startup_hides_them(nbclassic_server, page):
-    metadata = {"rise": {"show_buttons_on_startup": False, "enable_chalkboard": True}}
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
-    enter_slideshow(page)
-    expect(page.locator("#toggle-chalkboard")).to_be_hidden(timeout=5000)
-    page.keyboard.press("Alt+r")
-    expect(page.locator("body")).not_to_have_class(RISE_ENABLED)
-    enter_slideshow(page)
-    expect(page.locator("#exit_b")).to_have_count(1)
-    expect(page.locator("#toggle-chalkboard")).to_have_count(1)
-    # the buttons fade out 2 s after entering, in 0.4 s
-    page.wait_for_timeout(3000)
-
-    expect(page.locator("#exit_b")).to_be_hidden()
-    expect(page.locator("#toggle-chalkboard")).to_be_hidden()
 
 
 def test_exiting_right_after_entering_leaves_the_notebook_unsized(nbclassic_server, page):

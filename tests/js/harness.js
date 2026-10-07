@@ -174,8 +174,10 @@ function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded) {
             return index === -1 ? null : index;
         }
 
+        // Like nbclassic, whose get_cell(null) reads the first cell element, with no cell
+        // selected this returns the first cell.
         get_selected_cell() {
-            return this.get_cells().findLast((cell) => cell.selected) ?? null;
+            return this.get_cells()[this.get_selected_index() ?? 0] ?? null;
         }
 
         // Same validity check as nbclassic's is_valid_cell_index: null or out of range keeps the

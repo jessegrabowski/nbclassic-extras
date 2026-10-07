@@ -371,6 +371,33 @@ test("entering and exiting leave reveal's class names in notebook output alone",
     assert.equal(hiddenControls.css("display"), "none");
 });
 
+test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { show_buttons_on_startup: false } },
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+    $.fx.off = true;
+    // the chalkboard plugin adds these, and they outlive the slideshow
+    $('<div id="toggle-chalkboard"></div><div id="toggle-notes"></div>').appendTo("body");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const shown = () => Array.from($("#help_b, #exit_b, #toggle-chalkboard, #toggle-notes"))
+        .filter((element) => $(element).css("display") !== "none")
+        .map((element) => element.id)
+        .sort();
+
+    rise.run("RISE:slideshow");
+    assert.deepEqual(shown(), ["exit_b", "help_b", "toggle-chalkboard", "toggle-notes"]);
+    t.mock.timers.tick(2000);
+    assert.deepEqual(shown(), []);
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+    t.mock.timers.tick(2000);
+    assert.deepEqual(shown(), []);
+});
+
 test("exiting clears the skip class from every skip cell", async (t) => {
     const cells = [
         cell("Alpha", "slide"),
