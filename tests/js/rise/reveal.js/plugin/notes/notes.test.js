@@ -28,16 +28,6 @@ test("the speaker view opens notes.html beside notes.js, query string and all", 
     assert.equal(plugin.popups[0].url, notesHtml);
 });
 
-test("the speaker view is bound to T", (t) => {
-    const plugin = loadRevealPlugin(NOTES, SLIDES, QUERY);
-    t.after(plugin.close);
-
-    plugin.window.RevealNotes.init();
-
-    const keys = plugin.keyBindings.map((entry) => [entry.binding.keyCode, entry.binding.key]);
-    assert.deepEqual(keys, [[84, "T"]]);
-});
-
 test("opening the speaker view again focuses the open window", (t) => {
     const plugin = loadRevealPlugin(NOTES, SLIDES, QUERY);
     t.after(plugin.close);

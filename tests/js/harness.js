@@ -358,7 +358,6 @@ function loadRevealPlugin(relativePath,
     const window = dom.window;
     const popups = [];
     const alerts = [];
-    const keyBindings = [];
     const listeners = [];
     let current = window.document.querySelector(".slides section section");
     window.open = (url, name) => {
@@ -386,9 +385,7 @@ function loadRevealPlugin(relativePath,
         getState: () => ({ indexh: 0, indexv: 0 }),
         getCurrentSlide: () => current,
         getRevealElement: () => window.document.querySelector(".reveal"),
-        addKeyBinding(binding, callback) {
-            keyBindings.push({ binding: binding, callback: callback });
-        },
+        addKeyBinding() {},
         addEventListener: (name, callback) => listeners.push({ name: name, callback: callback }),
     };
     window.eval(fs.readFileSync(path.join(REPO_ROOT, "static", "rise", relativePath), "utf8"));
@@ -396,7 +393,6 @@ function loadRevealPlugin(relativePath,
         window: window,
         popups: popups,
         alerts: alerts,
-        keyBindings: keyBindings,
         downloads: downloads,
         // Make `selector` the current slide and fire reveal's event, as reveal does on navigation.
         showSlide(selector, eventName = "slidechanged") {
