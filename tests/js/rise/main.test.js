@@ -236,10 +236,10 @@ test("nested settings from different config layers merge", async (t) => {
     });
     t.after(rise.close);
 
-    const bindings = rise.shortcuts.command.bindings;
-    assert.equal(bindings.get("alt-q"), "RISE:slideshow");
-    assert.equal(bindings.get("shift-x"), "RISE:toggle-slide");
-    assert.equal(bindings.get("shift-b"), "RISE:toggle-subslide");
+    const bindings = rise.shortcutMap("command");
+    assert.equal(bindings["alt-q"], "RISE:slideshow");
+    assert.equal(bindings["shift-x"], "RISE:toggle-slide");
+    assert.equal(bindings["shift-b"], "RISE:toggle-subslide");
 });
 
 test("metadata config applies when the notebook finishes loading after RISE", async (t) => {
@@ -335,11 +335,11 @@ test("the default RISE shortcuts are bound in command mode", async (t) => {
     const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
     t.after(rise.close);
 
-    const bindings = rise.shortcuts.command.bindings;
-    assert.equal(bindings.get("alt-r"), "RISE:slideshow");
-    assert.equal(bindings.get("shift-i"), "RISE:toggle-slide");
-    assert.equal(bindings.get("shift-b"), "RISE:toggle-subslide");
-    assert.equal(bindings.get("shift-g"), "RISE:toggle-fragment");
+    const bindings = rise.shortcutMap("command");
+    assert.equal(bindings["alt-r"], "RISE:slideshow");
+    assert.equal(bindings["shift-i"], "RISE:toggle-slide");
+    assert.equal(bindings["shift-b"], "RISE:toggle-subslide");
+    assert.equal(bindings["shift-g"], "RISE:toggle-fragment");
 });
 
 test("a custom shortcut replaces its default and an empty one unbinds it", async (t) => {
@@ -349,11 +349,11 @@ test("a custom shortcut replaces its default and an empty one unbinds it", async
     });
     t.after(rise.close);
 
-    const bindings = rise.shortcuts.command.bindings;
-    assert.equal(bindings.get("alt-q"), "RISE:slideshow");
-    assert.equal(bindings.has("alt-r"), false);
-    assert.equal(bindings.has("shift-i"), false);
-    assert.equal(bindings.has(""), false);
+    const bindings = rise.shortcutMap("command");
+    assert.equal(bindings["alt-q"], "RISE:slideshow");
+    assert.equal(bindings["alt-r"], undefined);
+    assert.equal(bindings["shift-i"], undefined);
+    assert.equal(bindings[""], undefined);
 });
 
 test("inside the slideshow the reveal and plugin actions are bound to their keys", async (t) => {
@@ -362,9 +362,9 @@ test("inside the slideshow the reveal and plugin actions are bound to their keys
 
     rise.run("RISE:slideshow");
 
-    const command = Object.fromEntries(rise.shortcuts.command.bindings);
+    const command = rise.shortcutMap("command");
     assert.equal(command["shift-enter"], "RISE:smart-exec");
-    assert.equal(rise.shortcuts.edit.bindings.get("shift-enter"), "RISE:smart-exec");
+    assert.equal(rise.shortcutMap("edit")["shift-enter"], "RISE:smart-exec");
     assert.equal(command.home, "RISE:firstSlide");
     assert.equal(command.end, "RISE:lastSlide");
     assert.equal(command.w, "RISE:toggleOverview");
@@ -394,22 +394,18 @@ test("exiting clears the skip class from every skip cell", async (t) => {
     assert.equal($(".reveal-skip").length, 0);
 });
 
-// "?" is left out: nbclassic's remove_shortcut normalizes it to "/", so it cannot be unbound.
 test("exiting restores every shortcut the slideshow rebound", async (t) => {
     const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
     t.after(rise.close);
-    const command = () => {
-        const bindings = Object.fromEntries(rise.shortcuts.command.bindings);
-        delete bindings["?"];
-        return bindings;
+    const shortcuts = () => {
+        return { command: rise.shortcutMap("command"), edit: rise.shortcutMap("edit") };
     };
-    const edit = () => Object.fromEntries(rise.shortcuts.edit.bindings);
-    const before = { command: command(), edit: edit() };
+    const before = shortcuts();
 
     rise.run("RISE:slideshow");
     rise.run("RISE:slideshow");
 
-    assert.deepEqual({ command: command(), edit: edit() }, before);
+    assert.deepEqual(shortcuts(), before);
 });
 
 test("exiting keeps a custom shift-enter binding", async (t) => {
@@ -490,7 +486,7 @@ test("an empty reveal shortcut leaves its action unbound and still shows the hel
     rise.run("RISE:slideshow");
     rise.run("RISE:riseHelp");
 
-    assert.equal(rise.shortcuts.command.bindings.has(""), false);
+    assert.equal(rise.shortcutMap("command")[""], undefined);
     assert.equal(rise.dialogs.length, 1);
 });
 

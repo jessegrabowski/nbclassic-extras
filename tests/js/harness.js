@@ -1,6 +1,6 @@
-// Loads static/rise/main.js in a jsdom page with real jQuery (nbclassic's own copy) and a fake
-// Jupyter whose notebook, config, keyboard manager, actions, and dialogs hold state. Tests drive
-// RISE only through what setup() registers and assert on the resulting DOM and Jupyter state.
+// Loads static/rise/main.js in a jsdom page with nbclassic's own jQuery and shortcut manager and a
+// fake Jupyter whose notebook, config, actions, and dialogs hold state. Tests drive RISE only
+// through what setup() registers and assert on the resulting DOM and Jupyter state.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -8,8 +8,14 @@ const { JSDOM } = require("jsdom");
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 const MAIN_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "rise", "main.js"), "utf8");
-const JQUERY_PATH = path.join(nbclassicStatic(), "components", "jquery", "jquery.min.js");
-const JQUERY_JS = fs.readFileSync(JQUERY_PATH, "utf8");
+const NBCLASSIC_STATIC = nbclassicStatic();
+const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
+const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
+const KEYBOARD_JS = readStatic("base", "js", "keyboard.js");
+
+function readStatic(...parts) {
+    return fs.readFileSync(path.join(NBCLASSIC_STATIC, ...parts), "utf8");
+}
 
 function nbclassicStatic() {
     const prefix = process.env.CONDA_PREFIX;
@@ -49,40 +55,50 @@ class FakeEvents {
     }
 }
 
-// nbclassic's default bindings for the keys RISE rebinds; every other key starts unbound.
+// nbclassic's default bindings for the keys RISE rebinds, for keys a custom reveal shortcut can
+// collide with, and for multi-key shortcuts; every other key starts unbound.
 const NBCLASSIC_COMMAND_SHORTCUTS = {
     "shift-enter": "jupyter-notebook:run-cell-and-select-next",
     s: "jupyter-notebook:save-notebook",
     q: "jupyter-notebook:close-pager",
+    f: "jupyter-notebook:find-and-replace",
+    a: "jupyter-notebook:insert-cell-above",
+    "i,i": "jupyter-notebook:interrupt-kernel",
+    "0,0": "jupyter-notebook:confirm-restart-kernel",
+    "d,d": "jupyter-notebook:delete-cell",
 };
 const NBCLASSIC_EDIT_SHORTCUTS = {
     "shift-enter": "jupyter-notebook:run-cell-and-select-next",
 };
 
-class FakeShortcuts {
-    constructor(defaults) {
-        this.bindings = new Map(Object.entries(defaults));
-    }
+// Load nbclassic's base/js/keyboard module, as a Chrome page on Linux sees it.
+function loadKeyboard(window, $) {
+    window.eval(UNDERSCORE_JS);
+    let factory = null;
+    window.define = (deps, body) => {
+        factory = body;
+    };
+    window.eval(KEYBOARD_JS);
+    return factory($, { browser: ["Chrome"], platform: "Linux" }, window._);
+}
 
-    get_shortcut(key) {
-        return this.bindings.get(key);
+function shortcutManager(keyboard, defaults) {
+    const manager = new keyboard.ShortcutManager(undefined,
+                                                 { trigger() {} },
+                                                 { extend_env() {}, get_name: (name) => name });
+    for (const [key, action] of Object.entries(defaults)) {
+        manager.set_shortcut(key, action);
     }
+    return manager;
+}
 
-    add_shortcut(key, action) {
-        this.bindings.set(key, action);
-    }
-
-    set_shortcut(key, action) {
-        this.bindings.set(key, action);
-    }
-
-    // Like nbclassic, removing a key that is not bound is an error, and the key is normalized
-    // first, which turns "?" into "/".
-    remove_shortcut(key) {
-        if (!this.bindings.delete(key === "?" ? "/" : key)) {
-            throw new Error("trying to remove a non-existent shortcut");
-        }
-    }
+// Every binding of `manager` as {"i,i": action, ...}.
+function flatShortcuts(manager) {
+    const flatten = (tree, prefix) => Object.entries(tree).flatMap(([key, node]) => {
+        const shortcut = prefix + key;
+        return typeof node === "string" ? [[shortcut, node]] : flatten(node, `${shortcut},`);
+    });
+    return Object.fromEntries(flatten(manager._shortcuts, ""));
 }
 
 function makeCells($, specs) {
@@ -132,13 +148,14 @@ function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded) {
             return this.get_cell_elements().toArray().map((element) => $(element).data("cell"));
         }
 
+        // Like nbclassic, the last selected cell wins.
         get_selected_index() {
-            const index = this.get_cells().findIndex((cell) => cell.selected);
+            const index = this.get_cells().findLastIndex((cell) => cell.selected);
             return index === -1 ? null : index;
         }
 
         get_selected_cell() {
-            return this.get_cells().find((cell) => cell.selected) ?? null;
+            return this.get_cells().findLast((cell) => cell.selected) ?? null;
         }
 
         // Same validity check as nbclassic's is_valid_cell_index: null or out of range keeps the
@@ -165,7 +182,8 @@ function configSection(data) {
 }
 
 // Holds the slide reveal is showing and fires its ready event, so RISE's own lookups and
-// listeners work. Tests never assert on it: the reveal API changes when RISE moves to reveal.js 6.
+// listeners work. Tests assert only on the listeners RISE leaves registered, since the rest of the
+// reveal API changes when RISE moves to reveal.js 6.
 function makeReveal(window) {
     let current = null;
     let listeners = [];
@@ -221,6 +239,7 @@ async function loadRise({
     const window = dom.window;
     window.eval(JQUERY_JS);
     const $ = window.jQuery;
+    const keyboard = loadKeyboard(window, $);
 
     const actions = new Map();
     const actionRegistry = {
@@ -229,8 +248,8 @@ async function loadRise({
         },
     };
     const shortcuts = {
-        command: new FakeShortcuts(NBCLASSIC_COMMAND_SHORTCUTS),
-        edit: new FakeShortcuts(NBCLASSIC_EDIT_SHORTCUTS),
+        command: shortcutManager(keyboard, NBCLASSIC_COMMAND_SHORTCUTS),
+        edit: shortcutManager(keyboard, NBCLASSIC_EDIT_SHORTCUTS),
     };
     const notebookCells = makeCells($, cells);
     const notebook = makeNotebook($,
@@ -262,7 +281,7 @@ async function loadRise({
         factory = body;
     };
     window.eval(MAIN_JS);
-    const setup = factory(fakeRequire, $, Jupyter, utils, configmod);
+    const setup = factory(fakeRequire, $, Jupyter, utils, configmod, keyboard);
     setup();
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
@@ -270,6 +289,7 @@ async function loadRise({
         $: $,
         cells: notebookCells,
         shortcuts: shortcuts,
+        shortcutMap: (mode) => flatShortcuts(shortcuts[mode]),
         dialogs: dialogs,
         run(actionName) {
             const action = actions.get(actionName);
