@@ -409,6 +409,34 @@ test("exiting restores every shortcut the slideshow rebound", async (t) => {
     assert.deepEqual(shortcuts(), before);
 });
 
+test("exiting restores the shortcuts behind custom reveal keys", async (t) => {
+    // "a,b" cannot be bound while "a" is, "g,u" starts with an unbound key, "i" begins "i,i",
+    // "f" is bound twice inside the slideshow, by firstSlide and by fullscreenHelp, and nbclassic
+    // stores "?" as "/" and "T" as "t"
+    const main = { firstSlide: "f", lastSlide: "a,b", toggleOverview: "g,u", riseHelp: "i" };
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: {
+            rise: {
+                reveal_shortcuts: {
+                    main: main,
+                    chalkboard: { download: "?" },
+                    notes: { openNotes: "T" },
+                },
+            },
+        },
+    });
+    t.after(rise.close);
+    const before = rise.shortcutMap("command");
+
+    rise.run("RISE:slideshow");
+    assert.equal(rise.$("#exit_b").length, 1);
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(rise.shortcutMap("command"), before);
+    assert.equal(rise.$("#exit_b").length, 0);
+});
+
 test("exiting keeps a custom shift-enter binding", async (t) => {
     const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
     t.after(rise.close);

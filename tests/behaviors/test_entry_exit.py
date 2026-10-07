@@ -117,3 +117,18 @@ def test_exit_restores_two_key_shortcuts_under_a_custom_reveal_key(nbclassic_ser
     expect(page.locator("#exit_b")).to_have_count(0)
     shortcut = "() => Jupyter.keyboard_manager.command_shortcuts.get_shortcut('i,i')"
     assert page.evaluate(shortcut) == "jupyter-notebook:interrupt-kernel"
+
+
+def test_custom_reveal_keys_that_nbclassic_cannot_bind_leave_exit_working(nbclassic_server, page):
+    # "a,b" is refused while "a" is bound on its own, and "g,u" starts with an unbound key
+    custom = {"lastSlide": "a,b", "toggleOverview": "g,u"}
+    metadata = {"rise": {"reveal_shortcuts": {"main": custom}}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+    exit_slideshow(page)
+
+    expect(page.locator("#exit_b")).to_have_count(0)
+    shortcut = "(key) => Jupyter.keyboard_manager.command_shortcuts.get_shortcut(key)"
+    assert page.evaluate(shortcut, "a") == "jupyter-notebook:insert-cell-above"
+    assert page.evaluate(shortcut, "shift-enter") == "jupyter-notebook:run-cell-and-select-next"
+    assert page.evaluate(shortcut, "g") is None

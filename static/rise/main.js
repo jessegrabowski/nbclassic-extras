@@ -14,7 +14,8 @@ define([
   'base/js/namespace',
   'base/js/utils',
   'services/config',
-], function(require, $, Jupyter, utils, configmod) {
+  'base/js/keyboard',
+], function(require, $, Jupyter, utils, configmod, keyboard) {
 
   "use strict";
 
@@ -839,9 +840,25 @@ define([
   // [shortcut manager, key, previous action] for every binding the slideshow changed
   let replaced_shortcuts = [];
 
+  // nbclassic's get_shortcut throws when a multi-key shortcut starts with an unbound key
+  function currentBinding(manager, key) {
+    let keys = key.split(',');
+    for (let length = 1; length < keys.length; length++) {
+      if (manager.get_shortcut(keys.slice(0, length).join(',')) === undefined) {
+        return undefined;
+      }
+    }
+    return manager.get_shortcut(key);
+  }
+
+  // nbclassic stores and removes shortcuts in normalized form, and refuses a multi-key shortcut
+  // whose first key is already bound on its own; only bindings it accepted are undone on exit
   function rebind(manager, key, action) {
-    replaced_shortcuts.push([manager, key, manager.get_shortcut(key)]);
-    manager.set_shortcut(key, action);
+    key = keyboard.normalize_shortcut(key);
+    let previous = currentBinding(manager, key);
+    if (manager.set_shortcut(key, action)) {
+      replaced_shortcuts.push([manager, key, previous]);
+    }
   }
 
   function restoreShortcutTree(manager, prefix, tree) {
@@ -883,12 +900,8 @@ define([
           // key began multi-key shortcuts (like 'i' in 'i,i'), which the binding replaced
           manager.remove_shortcut(key);
           restoreShortcutTree(manager, key, previous);
-        } else if (manager.get_shortcut(key) !== undefined) {
-          try {
-            manager.remove_shortcut(key);
-          } catch (error) {
-            // remove_shortcut normalizes '?' to '/', so a raw '?' binding cannot be removed
-          }
+        } else if (currentBinding(manager, key) !== undefined) {
+          manager.remove_shortcut(key);
         }
       }
       replaced_shortcuts = [];
