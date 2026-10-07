@@ -840,16 +840,8 @@ define([
   let replaced_shortcuts = [];
 
   function rebind(manager, key, action) {
-    let previous = manager.get_shortcut(key);
-    if (action === null && previous === undefined) {
-      return;
-    }
-    replaced_shortcuts.push([manager, key, previous]);
-    if (action === null) {
-      manager.remove_shortcut(key);
-    } else {
-      manager.set_shortcut(key, action);
-    }
+    replaced_shortcuts.push([manager, key, manager.get_shortcut(key)]);
+    manager.set_shortcut(key, action);
   }
 
   function restoreShortcutTree(manager, prefix, tree) {
@@ -880,8 +872,7 @@ define([
           }
         }
       }
-      // Save the f keyboard event for the Reveal fullscreen action, see also #375
-      rebind(command_shortcuts, "f", null);
+      // f opens the fullscreen help inside the slideshow, see also #375
       rebind(command_shortcuts, "shift-f", "jupyter-notebook:find-and-replace");
     } else if (mode === 'notebook_mode') {
       // undo in reverse order, so a key changed twice ends with its original action
