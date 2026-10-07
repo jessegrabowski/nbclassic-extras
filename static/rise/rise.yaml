@@ -241,10 +241,11 @@ Parameters:
 - name: rise.theme
   description: >
     <code>theme</code>: <strong>This setting, like the ones below,
-    is passed directly to <a href="https://github.com/hakimel/reveal.js">
+    is passed directly to <a href="https://revealjs.com/config/">
     <code>reveal.js</code> see this doc</a></strong>.
-    <br/> theme: <a href="https://github.com/hakimel/reveal.js#theming">
-    see a list of reveal's available native themes</a>.
+    <br/> theme: one of beige, black, black-contrast, blood, dracula, league, moon, night,
+    serif, simple, sky, solarized, white, white-contrast;
+    <a href="https://revealjs.com/themes/">see reveal's themes</a>.
     Note that dark themes from reveal do not work well with RISE,
     at least not without additional and manual tweaks.
   input_type: string
@@ -259,7 +260,7 @@ Parameters:
 - name: rise.slideNumber
   description: >
     <code>slideNumber</code>: a string to specify if and how to number slides;
-    <a href="https://github.com/hakimel/reveal.js#slide-number" target='_'>see reveal's explanations.</a>
+    <a href="https://revealjs.com/slide-numbers/" target='_'>see reveal's explanations.</a>
   input_type: string
   default: true
 #
