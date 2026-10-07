@@ -55,7 +55,6 @@ define([
     let hardwired_config = {
 
       // behaviour
-      autolaunch: false,
       start_slideshow_at: 'selected',
       auto_select: 'code',
       auto_select_fragment: true,
@@ -165,24 +164,6 @@ define([
         $.extend(true, complete_config, metadata);
         // console.log("complete_config is OK");
       });
-  }
-
-  /*
-   * this function is a heuristic that says if this notebook seems to
-   * be meant to be a slideshow.
-   * this primarily is for autolaunch, so that somebody who would
-   * enable autolaunch in her ~/.jupyter/ area would not
-   * see RISE trigger on every single notebook
-   *
-   * xxx note that this might take too long on large notebooks
-   * a possible improvement would be to look for the first, say, 10 cells only
-   * as a matter of fact, in most cases the first cell would be a slide cell really
-   */
-  function is_slideshow(notebook) {
-    for (let cell of notebook.get_cells())
-      if (is_slide(cell) || is_subslide(cell))
-        return true;
-    return false;
   }
 
   /*
@@ -395,20 +376,8 @@ define([
     }
   }
 
-  /*
-   * Setup the auto-launch function, which checks metadata to see if
-   * RISE should launch automatically when the notebook is opened.
-   *
-   * this will trigger only on notebooks that have
-   * either a 'livereveal' or a 'rise' section in their metadata
-   * this is because autolaunch can be enabled in nbextensions_configurator
-   * and so can possibly have a too big impact if we are not careful
-   */
-  function autoLaunch() {
-    if (complete_config.autolaunch && is_slideshow(Jupyter.notebook)) {
-      revealMode();
-    }
-
+  // the speaker view opens this notebook in a notes.html popup, which starts in the slideshow
+  function enterSlideshowInSpeakerView() {
     // Ref: https://stackoverflow.com/a/7739035
     let url = (window.location != window.parent.location)
         ? document.referrer
@@ -1403,7 +1372,6 @@ define([
 
   function showConfig() {
     console.log("RISE configuration", complete_config);
-    console.log(`Current notebook ${is_slideshow(Jupyter.notebook) ? "is" : "not"} a slideshow`);
   }
 
 
@@ -1421,7 +1389,7 @@ define([
     //      .then(showConfig)
       .then(registerJupyterActions)
       .then(addButtonsAndShortcuts)
-      .then(autoLaunch)
+      .then(enterSlideshowInSpeakerView)
     ;
 
   }

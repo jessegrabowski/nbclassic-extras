@@ -12,15 +12,6 @@ Link: README.md
 Icon: rise.png
 Parameters:
 #
-- name: rise.autolaunch
-  description: >
-     <code>autolaunch</code>: autorun slideshow upon opening if set; active only
-     on notebooks that have a 'livereveal' or 'rise' section in their
-     metadata; this provision is here to avoid starting RISE
-     on regular notebooks that are not intended for slideshow.
-  input_type: checkbox
-  default: false
-#
 - name: rise.enable_chalkboard
   description: >
     <code>enable_chalkboard</code>: if set, turn on the <code>chalkboard</code>
