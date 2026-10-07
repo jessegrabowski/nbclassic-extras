@@ -461,6 +461,25 @@ test("exiting while reveal is still loading restores the notebook and never star
     assert.equal(rise.revealListenerCount("ready"), 0);
 });
 
+test("chalkboard buttons stay hidden on entries after chalkboard is turned off", async (t) => {
+    const metadata = { rise: { enable_chalkboard: true } };
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });
+    t.after(rise.close);
+    const { $ } = rise;
+    const shown = () => $("#toggle-chalkboard, #toggle-notes")
+        .filter((index, element) => $(element).css("display") !== "none").length;
+    rise.run("RISE:slideshow");
+    await rise.idle(0);
+    assert.equal(shown(), 2);
+    rise.run("RISE:slideshow");
+
+    metadata.rise = { enable_chalkboard: false };
+    rise.run("RISE:slideshow");
+    await rise.idle(0);
+
+    assert.equal(shown(), 0);
+});
+
 test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],

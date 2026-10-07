@@ -645,8 +645,9 @@ define([
         // the previous exit hid these inline; reveal sets the display of the ones it
         // manages again when configured, the others would stay hidden
         revealChrome().css('display', '');
-        // chalkboard buttons outlive the slideshow, so start each entry from shown
-        $('#toggle-chalkboard, #toggle-notes').show();
+        // chalkboard buttons outlive the slideshow, so start each entry from shown, or hidden
+        // when chalkboard has since been turned off
+        $('#toggle-chalkboard, #toggle-notes').toggle(Boolean(enable_chalkboard));
         Reveal.configure(options);
         started = Promise.resolve();
       } else {
