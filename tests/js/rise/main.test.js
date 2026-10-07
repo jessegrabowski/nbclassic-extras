@@ -368,6 +368,7 @@ test("inside the slideshow the reveal and plugin actions are bound to their keys
     assert.equal(command.home, "RISE:firstSlide");
     assert.equal(command.end, "RISE:lastSlide");
     assert.equal(command.w, "RISE:toggleOverview");
+    assert.equal(command.f, "RISE:fullscreenHelp");
     assert.equal(command["shift-/"], "RISE:riseHelp");
     assert.equal(command.t, "RISE:openNotes");
     assert.equal(command["["], "RISE:toggleChalkboard");
@@ -488,14 +489,4 @@ test("an empty reveal shortcut leaves its action unbound and still shows the hel
 
     assert.equal(rise.shortcutMap("command")[""], undefined);
     assert.equal(rise.dialogs.length, 1);
-});
-
-test("inside the slideshow f opens fullscreen help and shift-/ the shortcut help", async (t) => {
-    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
-    t.after(rise.close);
-
-    rise.run("RISE:slideshow");
-
-    assert.equal(rise.shortcuts.command.get_shortcut("f"), "RISE:fullscreenHelp");
-    assert.equal(rise.shortcuts.command.get_shortcut("shift-/"), "RISE:riseHelp");
 });
