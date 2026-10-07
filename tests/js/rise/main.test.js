@@ -375,6 +375,22 @@ test("inside the slideshow the reveal and plugin actions are bound to their keys
     assert.equal(command["shift-f"], "jupyter-notebook:find-and-replace");
 });
 
+test("entering and exiting leave reveal's class names in notebook output alone", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+    const { $ } = rise;
+    const output = $(".cell").first();
+    const progressBar = $('<div class="progress"></div>').appendTo(output);
+    const hiddenControls = $('<div class="controls"></div>').hide().appendTo(output);
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+    assert.notEqual(progressBar.css("display"), "none");
+
+    rise.run("RISE:slideshow");
+    assert.equal(hiddenControls.css("display"), "none");
+});
+
 test("exiting clears the skip class from every skip cell", async (t) => {
     const cells = [
         cell("Alpha", "slide"),

@@ -503,6 +503,14 @@ define([
 
   const RISE_BUTTONS = '#help_b,#exit_b,#toggle-chalkboard,#toggle-notes';
 
+  // the controls reveal creates directly inside its root element, div#notebook; notebook
+  // output can carry the same class names (a Bootstrap .progress bar, say)
+  function revealChrome() {
+    return $('div#notebook')
+      .children('.backgrounds, .progress, .controls, .slide-number, .speaker-notes, .pause-overlay')
+      .add('div#aria-status-div');
+  }
+
   function toggleAllRiseButtons() {
     $(RISE_BUTTONS).fadeToggle()
   }
@@ -653,8 +661,7 @@ define([
               if (Reveal.initialized) {
                 // the previous exit hid these inline; reveal sets the display of the ones it
                 // manages again when configured, the others would stay hidden
-                $('.backgrounds, .progress, .controls, .slide-number, .speaker-notes, '
-                  + '.pause-overlay, div#aria-status-div').css('display', '');
+                revealChrome().css('display', '');
                 // chalkboard buttons outlive the slideshow, so start each entry from shown
                 $('#toggle-chalkboard, #toggle-notes').show();
                 //delete options["dependencies"];
@@ -1085,13 +1092,7 @@ define([
     $('#rise-custom-css').remove();
     $('#rise-notebook-css').remove();
 
-    $('.backgrounds').hide();
-    $('.progress').hide();
-    $('.controls').hide();
-    $('.slide-number').hide();
-    $('.speaker-notes').hide();
-    $('.pause-overlay').hide();
-    $('div#aria-status-div').hide();
+    revealChrome().hide();
 
     let cells = Jupyter.notebook.get_cells();
     for (let cell of cells) {
