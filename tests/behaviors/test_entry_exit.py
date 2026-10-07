@@ -1,19 +1,16 @@
 from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, RISE_ENABLED, enter_slideshow, exit_slideshow, markdown
+from slideshow import (
+    CURRENT_SUBSLIDE,
+    RISE_ENABLED,
+    enter_slideshow,
+    exit_slideshow,
+    has_class,
+    markdown,
+)
 
 
-def test_rise_button_enters_and_exits_slideshow(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
-
-    enter_slideshow(page)
-    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Alpha")
-
-    exit_slideshow(page)
-    expect(page.locator("#notebook-container section")).to_have_count(0)
-
-
-def test_exit_restores_cell_order_and_editing(nbclassic_server, page):
+def test_slideshow_hides_skip_and_notes_cells_and_exit_restores_them(nbclassic_server, page):
     cells = [
         markdown("Alpha", "slide"),
         markdown("Skipped", "skip"),
@@ -22,8 +19,15 @@ def test_exit_restores_cell_order_and_editing(nbclassic_server, page):
     ]
     nbclassic_server.open_notebook(page, cells)
     enter_slideshow(page)
+    rendered = page.locator(".text_cell_render")
+    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Alpha")
+    expect(rendered.filter(has_text="Skipped")).to_be_hidden()
+    expect(page.locator("aside.notes")).to_contain_text("Spoken")
+    expect(rendered.filter(has_text="Spoken")).to_be_hidden()
+
     exit_slideshow(page)
 
+    expect(page.locator("#notebook-container section")).to_have_count(0)
     restored = page.locator("#notebook-container > .cell")
     expect(restored).to_have_count(4)
     expect(restored.nth(0)).to_contain_text("Alpha")
@@ -44,11 +48,15 @@ def test_slash_toggles_the_pause_overlay_after_reentering(nbclassic_server, page
     enter_slideshow(page)
     exit_slideshow(page)
     enter_slideshow(page)
+    reveal = page.locator("div.reveal")
 
     page.keyboard.press("/")
-
+    expect(reveal).to_have_class(has_class("paused"))
     expect(page.locator(".pause-overlay")).to_be_visible()
 
+
+    page.keyboard.press("/")
+    expect(reveal).not_to_have_class(has_class("paused"))
 
 def test_reentering_keeps_every_rise_button_hidden_when_startup_hides_them(nbclassic_server, page):
     metadata = {"rise": {"show_buttons_on_startup": False, "enable_chalkboard": True}}

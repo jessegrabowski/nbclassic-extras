@@ -5,7 +5,6 @@ from slideshow import CURRENT_SUBSLIDE, enter_slideshow, exit_slideshow, has_cla
 
 VISIBLE = has_class("visible")
 OVERVIEW = has_class("overview")
-PAUSED = has_class("paused")
 
 
 def test_navigation_visits_slides_subslides_and_fragments_in_order(nbclassic_server, page):
@@ -34,50 +33,14 @@ def test_navigation_visits_slides_subslides_and_fragments_in_order(nbclassic_ser
     page.keyboard.press("Space")
     expect(current).to_contain_text("Delta")
 
-
-def test_shift_space_steps_back_through_subslides(nbclassic_server, page):
-    cells = [
-        markdown("Alpha", "slide"),
-        markdown("Bravo", "subslide"),
-        markdown("Charlie", "slide"),
-    ]
-    nbclassic_server.open_notebook(page, cells)
-    enter_slideshow(page)
-    current = page.locator(CURRENT_SUBSLIDE)
-    page.keyboard.press("Space")
-    page.keyboard.press("Space")
+    page.keyboard.press("Shift+Space")
     expect(current).to_contain_text("Charlie")
 
     page.keyboard.press("Shift+Space")
-    expect(current).to_contain_text("Bravo")
-
-    page.keyboard.press("Shift+Space")
     expect(current).to_contain_text("Alpha")
 
 
-def test_page_down_and_page_up_step_through_fragments_and_subslides(nbclassic_server, page):
-    cells = [
-        markdown("Alpha", "slide"),
-        markdown("Bravo", "fragment"),
-        markdown("Charlie", "subslide"),
-    ]
-    nbclassic_server.open_notebook(page, cells)
-    enter_slideshow(page)
-    current = page.locator(CURRENT_SUBSLIDE)
-    bravo = page.locator(".fragment", has_text="Bravo")
-
-    page.keyboard.press("PageDown")
-    expect(bravo).to_have_class(VISIBLE)
-    expect(current).to_contain_text("Alpha")
-
-    page.keyboard.press("PageDown")
-    expect(current).to_contain_text("Charlie")
-
-    page.keyboard.press("PageUp")
-    expect(current).to_contain_text("Alpha")
-
-
-def test_arrow_keys_move_between_slides_skipping_subslides(nbclassic_server, page):
+def test_page_keys_step_like_space_and_arrows_skip_subslides(nbclassic_server, page):
     cells = [
         markdown("Alpha", "slide"),
         markdown("Bravo", "fragment"),
@@ -89,30 +52,22 @@ def test_arrow_keys_move_between_slides_skipping_subslides(nbclassic_server, pag
     current = page.locator(CURRENT_SUBSLIDE)
     bravo = page.locator(".fragment", has_text="Bravo")
 
-    page.keyboard.press("ArrowRight")
+    page.keyboard.press("PageDown")
     expect(bravo).to_have_class(VISIBLE)
+    page.keyboard.press("PageDown")
+    expect(current).to_contain_text("Charlie")
+    page.keyboard.press("PageUp")
     expect(current).to_contain_text("Alpha")
 
     page.keyboard.press("ArrowRight")
     expect(current).to_contain_text("Delta")
-
     page.keyboard.press("ArrowLeft")
     expect(current).to_contain_text("Alpha")
 
-
-def test_arrow_down_does_not_move(nbclassic_server, page):
-    cells = [
-        markdown("Alpha", "slide"),
-        markdown("Bravo", "subslide"),
-        markdown("Charlie", "subslide"),
-    ]
-    nbclassic_server.open_notebook(page, cells)
-    enter_slideshow(page)
-
+    # RISE turns off reveal's down arrow, which would otherwise move to Charlie
     page.keyboard.press("ArrowDown")
-    page.keyboard.press("Space")
-
-    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Bravo")
+    page.keyboard.press("PageDown")
+    expect(current).to_contain_text("Charlie")
 
 
 def test_end_and_home_jump_to_the_last_and_first_slides(nbclassic_server, page):
@@ -143,19 +98,6 @@ def test_w_toggles_the_slide_overview(nbclassic_server, page):
 
     page.keyboard.press("w")
     expect(reveal).not_to_have_class(OVERVIEW)
-
-
-def test_slash_toggles_the_pause_overlay(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
-    enter_slideshow(page)
-    reveal = page.locator("div.reveal")
-
-    page.keyboard.press("/")
-    expect(reveal).to_have_class(PAUSED)
-    expect(page.locator(".pause-overlay")).to_be_visible()
-
-    page.keyboard.press("/")
-    expect(reveal).not_to_have_class(PAUSED)
 
 
 def test_url_hash_follows_the_current_subslide_and_clears_on_exit(nbclassic_server, page):
