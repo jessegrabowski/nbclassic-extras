@@ -73,3 +73,30 @@ test("downloaded drawings are sized to the canvases, not reveal's slide size", a
     assert.equal(storage[1].height, innerHeight);
     assert.notEqual(storage[0].width, 960);
 });
+
+function chalkTexturePatches(plugin) {
+    let patches = 0;
+    const context = new Proxy({ strokeStyle: "rgba(255,255,255,0.5)" }, {
+        get(target, name) {
+            return name === "clearRect" ? () => (patches += 1) : target[name] ?? (() => {});
+        },
+        set: (target, name, value) => {
+            target[name] = value;
+            return true;
+        },
+    });
+    plugin.window.RevealChalkboard.drawWithChalk(context, 0, 0, 200, 0);
+    return patches;
+}
+
+test("chalkEffect sets how much chalk texture a stroke gets, zero meaning none", (t) => {
+    const smooth = loadChalkboard({ chalkEffect: 0 });
+    const textured = loadChalkboard({ chalkEffect: 1 });
+    t.after(() => {
+        smooth.close();
+        textured.close();
+    });
+
+    assert.equal(chalkTexturePatches(smooth), 0);
+    assert.ok(chalkTexturePatches(textured) > 0);
+});
