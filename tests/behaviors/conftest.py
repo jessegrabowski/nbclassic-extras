@@ -27,17 +27,14 @@ class NbclassicServer:
         notebook = nbformat.v4.new_notebook(cells=cells, metadata=metadata or {})
         name = f"{os.urandom(4).hex()}.ipynb"
         nbformat.write(notebook, self.notebook_dir / name)
-        self.open_existing_notebook(page, name)
-        return name
 
-    def open_existing_notebook(self, page, name):
-        """Open notebook ``name`` from the notebook directory in ``page`` and wait for its kernel."""
         page.goto(f"http://localhost:{self.port}/notebooks/{name}?token={TOKEN}")
         page.wait_for_function(
             "() => { var k = window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel;"
             " return !!k && k.is_connected() && !!k.info_reply; }",
             timeout=45000,
         )
+        return name
 
     def patch_nbconfig(self, section, values):
         """Merge ``values`` into nbconfig ``section``, where a value of None removes the key."""
@@ -93,14 +90,6 @@ def jupyter_home_serving_the_repo(home):
     shutil.copytree(REPO_ROOT / "static", data_dir / "nbextensions")
     shutil.copytree(REPO_ROOT / "jupyter-config", config_dir / "nbconfig")
     return config_dir, data_dir
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--update-screenshots",
-        action="store_true",
-        help="write the screenshots taken by test_screenshots.py as the new baselines",
-    )
 
 
 @pytest.fixture(scope="session")

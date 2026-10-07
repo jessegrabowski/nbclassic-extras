@@ -101,7 +101,6 @@ nbclassic-extras = { path = ".", editable = true }
 [tool.pixi.feature.test.dependencies]
 pytest = ">=8"
 nodejs = ">=22.12"
-pillow = "*"
 
 [tool.pixi.feature.test.pypi-dependencies]
 playwright = "*"

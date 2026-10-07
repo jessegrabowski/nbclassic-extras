@@ -55,15 +55,12 @@ jobs:
       - name: Run tests
         run: pixi run test -vv --durations=20
 
-      - name: Upload screenshots and the nbclassic log
-        # the screenshots of a run with no linux baselines are the baselines to commit
+      - name: Upload the nbclassic log
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: browser-test-output
-          path: |
-            .pytest_cache/d/screenshots
-            .pytest_cache/d/nbclassic
+          name: nbclassic-log
+          path: .pytest_cache/d/nbclassic
           include-hidden-files: true
 
   js-tests:

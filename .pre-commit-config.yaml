@@ -1,5 +1,5 @@
-# These hold upstream files that must stay byte-identical to their source.
-exclude: ^(static|licenses|tests/behaviors/notebooks)/
+# static/ and licenses/ hold upstream files that must stay byte-identical to their source.
+exclude: ^(static|licenses)/
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
