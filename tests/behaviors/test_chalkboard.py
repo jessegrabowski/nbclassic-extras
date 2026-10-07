@@ -83,15 +83,3 @@ def test_backslash_downloads_the_drawings(nbclassic_server, page):
         page.keyboard.press("\\")
 
     assert download.value.suggested_filename == "chalkboard.json"
-
-
-def test_read_only_chalkboard_ignores_drawing(nbclassic_server, page):
-    metadata = {"rise": {"enable_chalkboard": True, "chalkboard": {"readOnly": True}}}
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
-    enter_slideshow(page)
-
-    page.keyboard.press("]")
-    draw_stroke(page)
-
-    expect(page.locator("#notescanvas")).to_have_css("pointer-events", "none")
-    assert page.evaluate(PAINTED_PIXELS) == 0

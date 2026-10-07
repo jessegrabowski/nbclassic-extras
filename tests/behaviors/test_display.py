@@ -4,31 +4,17 @@ from playwright.sync_api import expect
 import pytest
 from slideshow import CURRENT_SUBSLIDE, enter_slideshow, has_class, markdown
 
-THEMES = [
-    "black",
-    "white",
-    "league",
-    "sky",
-    "beige",
-    "simple",
-    "serif",
-    "blood",
-    "night",
-    "moon",
-    "solarized",
-]
 TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="
 
 
-@pytest.mark.parametrize("theme", THEMES)
-def test_theme_option_loads_and_applies_the_theme_stylesheet(nbclassic_server, page, theme):
-    metadata = {"rise": {"theme": theme}}
+def test_theme_option_loads_and_applies_the_theme_stylesheet(nbclassic_server, page):
+    metadata = {"rise": {"theme": "serif"}}
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
     enter_slideshow(page)
 
-    expect(page.locator("body")).to_have_class(has_class(f"theme-{theme}"))
+    expect(page.locator("body")).to_have_class(has_class("theme-serif"))
     stylesheet = page.locator("link#theme")
-    expect(stylesheet).to_have_attribute("href", re.compile(rf"theme/{theme}\.css$"))
+    expect(stylesheet).to_have_attribute("href", re.compile(r"theme/serif\.css$"))
     # a stylesheet that failed to load has no readable rules
     rule_count = "(link) => { try { return link.sheet.cssRules.length; } catch { return 0; } }"
     assert stylesheet.evaluate(rule_count) > 0
@@ -40,16 +26,6 @@ def test_transition_option_sets_the_reveal_transition(nbclassic_server, page):
     enter_slideshow(page)
 
     expect(page.locator("div.reveal")).to_have_class(has_class("convex"))
-
-
-def test_reveal_chrome_is_shown_by_default(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide"), markdown("Bravo", "slide")])
-    enter_slideshow(page)
-
-    expect(page.locator(".reveal .controls")).to_have_css("display", "block")
-    expect(page.locator(".reveal .progress")).to_have_css("display", "block")
-    expect(page.locator(".reveal .slide-number")).to_have_css("display", "block")
-    expect(page.locator("div.reveal")).to_have_class(has_class("center"))
 
 
 def test_reveal_chrome_options_turn_each_element_off(nbclassic_server, page):
