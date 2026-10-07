@@ -874,7 +874,10 @@ define([
       // add all reveal.js and plugin bindings to jupyter
       for (const module of Object.keys(reveal_bindings)){
         for (const action of Object.keys(reveal_bindings[module])){
-          rebind(command_shortcuts, reveal_bindings[module][action], `RISE:${action}`);
+          const key = reveal_bindings[module][action];
+          if (key) {
+            rebind(command_shortcuts, key, `RISE:${action}`);
+          }
         }
       }
       // Save the f keyboard event for the Reveal fullscreen action, see also #375
@@ -902,10 +905,8 @@ define([
   }
 
   /*
-   * Creates a string of the valid shortcuts (i.e. the ones for which a key 
-   * code could be identified). If no key code could be identified the keys are
-   * still mapped to the default key code values (a string provided by
-   * the default_str argument will be used instead).
+   * Renders a shortcut (keys separated by commas) as <kbd> elements, or marks it
+   * unbound when it is empty.
    */
   function shortcutRepr(shortcuts){
     
@@ -923,7 +924,7 @@ define([
         }
       }
     } else {
-      key_str += "<kbd>" + default_str + "</kbd>";
+      key_str += "<em>unbound</em>";
     }
     return key_str;
   }
@@ -934,7 +935,6 @@ define([
    * 
    * Args:
    * shortcut_str = string representation of keyboard shortcut(s)
-   * default_str = default (fall back) string for key
    * help_str = help text to be shown for item
    */
   function helpListItem(shortcut_str, help_str){

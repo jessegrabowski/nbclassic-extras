@@ -479,3 +479,17 @@ test("every entry in the help dialog has a description", async (t) => {
     const entries = Array.from(items, (element) => element.textContent);
     assert.deepEqual(entries.filter((entry) => entry.includes("undefined")), []);
 });
+
+test("an empty reveal shortcut leaves its action unbound and still shows the help", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { reveal_shortcuts: { main: { toggleOverview: "" } } } },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:riseHelp");
+
+    assert.equal(rise.shortcuts.command.bindings.has(""), false);
+    assert.equal(rise.dialogs.length, 1);
+});
