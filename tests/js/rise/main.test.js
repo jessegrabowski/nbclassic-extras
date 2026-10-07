@@ -222,6 +222,38 @@ test("nested settings from different config layers merge", async (t) => {
     assert.equal(bindings["shift-b"], "RISE:toggle-subslide");
 });
 
+test("metadata edited between entries applies on the next entry", async (t) => {
+    const metadata = { rise: { theme: "serif", header: "Old header" } };
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });
+    t.after(rise.close);
+    const { $ } = rise;
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+
+    metadata.rise = { theme: "sky" };
+    rise.run("RISE:slideshow");
+
+    assert.ok($("body").hasClass("theme-sky"));
+    assert.ok(!$("body").hasClass("theme-serif"));
+    assert.match($("link#theme").attr("href"), /theme\/sky\.css$/);
+    assert.equal($("#rise-header").length, 0);
+});
+
+test("a reveal shortcut removed from metadata between entries returns to its default", async (t) => {
+    const metadata = { rise: { reveal_shortcuts: { main: { toggleOverview: "shift-o" } } } };
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });
+    t.after(rise.close);
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+
+    delete metadata.rise.reveal_shortcuts;
+    rise.run("RISE:slideshow");
+
+    const bindings = rise.shortcutMap("command");
+    assert.equal(bindings.w, "RISE:toggleOverview");
+    assert.notEqual(bindings["shift-o"], "RISE:toggleOverview");
+});
+
 test("metadata config applies when the notebook finishes loading after RISE", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],

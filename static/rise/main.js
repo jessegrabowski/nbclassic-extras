@@ -34,8 +34,11 @@ define([
    *   4a) for legacy reasons: use the 'livereveal' key
    *   4b) for more consistency, then override with the 'rise' key
    *
-   * configLoaded alters the complete_config object in place.
-   * it will hold a consolidated set of all relevant settings with their priorities resolved
+   * configLoaded keeps layers 1) to 3), which only change on a page reload, in server_config;
+   * rebuildConfig adds the notebook metadata on top into complete_config, once at load and
+   * again on each slideshow entry, so metadata edited in the open notebook applies.
+   * complete_config holds a consolidated set of all relevant settings with their priorities
+   * resolved
    *
    * it returns a promise that can be then'ed once the config is loaded
    *
@@ -45,7 +48,13 @@ define([
    * waiting for any asynchronous code to complete
    */
 
+  let server_config = {};
   let complete_config = {};
+
+  function rebuildConfig() {
+    complete_config = $.extend(true, {}, server_config, Jupyter.notebook.metadata.livereveal,
+                               Jupyter.notebook.metadata.rise);
+  }
 
   // returns a promise; you can do 'then()' on this promise
   // to do stuff *after* the configuration is completely loaded
@@ -146,20 +155,9 @@ define([
     ]).then(
       // and now we can compute the layered config
       function() {
-        // 1) initialize with hardwired defaults
-        $.extend(true, complete_config, hardwired_config);
-        // 2a) and 2b)
-        $.extend(true, complete_config, config_section_legacy.data);
-        $.extend(true, complete_config, config_section.data);
-        // 3)
-        $.extend(true, complete_config, nbext_configurator.data.rise);
-        // 4a) from the notebook metadata
-        let metadata_legacy = Jupyter.notebook.metadata.livereveal;
-        $.extend(true, complete_config, metadata_legacy);
-        // 4b) ditto
-        let metadata = Jupyter.notebook.metadata.rise;
-        $.extend(true, complete_config, metadata);
-        // console.log("complete_config is OK");
+        server_config = $.extend(true, {}, hardwired_config, config_section_legacy.data,
+                                 config_section.data, nbext_configurator.data.rise);
+        rebuildConfig();
       });
   }
 
@@ -816,19 +814,16 @@ define([
   
   // update reveal bindings with custom key codes
   function updateRevealBindings(default_bindings){
-    
-    // console.log(`complete_config in updateRevealBindings`, complete_config);
+    let bindings = $.extend(true, {}, default_bindings);
     let custom_shortcuts = complete_config.reveal_shortcuts;
-    // console.log(`custom_shortcuts in updateRevealBindings`, custom_shortcuts);
-    
     if (custom_shortcuts) {
       for (const module of Object.keys(custom_shortcuts)){
         for (const action of Object.keys(custom_shortcuts[module])){
-           default_bindings[module][action] = custom_shortcuts[module][action];
+           bindings[module][action] = custom_shortcuts[module][action];
         }
       }
     }
-    return default_bindings;
+    return bindings;
   }
   
 
@@ -1311,6 +1306,7 @@ define([
     let tag = $('#maintoolbar').hasClass('reveal_tagging');
 
     if (!tag) {
+      rebuildConfig();
       // Preparing the new reveal-compatible structure
       let selected_slide = markupSlides($('div#notebook-container'));
       // Adding the reveal stuff
