@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -31,10 +32,11 @@ EXAMPLES = [
     "issue-370",
     "issue-546-newlines-in-bullets",
 ]
-# A pixel counts as changed when a channel moves by more than this, which ignores antialiasing.
-CHANNEL_TOLERANCE = 40
-# Share of changed pixels a screenshot may differ from its baseline by.
-CHANGED_PIXEL_LIMIT = 0.002
+# A pixel counts as changed when a channel moves by more than this. Repeated runs on one machine
+# differ by at most 2 in a handful of pixels, and a text color change moves 30 or more.
+CHANNEL_TOLERANCE = 8
+# Share of changed pixels a screenshot may differ from its baseline by, about 180 at 1280x720.
+CHANGED_PIXEL_LIMIT = 0.0002
 
 
 def autolaunches(notebook):
@@ -47,6 +49,8 @@ def assert_first_slide_matches_baseline(page, name, request, autolaunch):
         wait_for_slideshow(page)
     else:
         enter_slideshow(page)
+    # several themes import their fonts from Google Fonts
+    page.wait_for_load_state("networkidle")
     page.evaluate("() => document.fonts.ready")
     page.wait_for_timeout(500)
     actual_path = request.config.cache.mkdir("screenshots") / f"{name}.png"
@@ -56,8 +60,12 @@ def assert_first_slide_matches_baseline(page, name, request, autolaunch):
     if request.config.getoption("--update-screenshots"):
         BASELINES.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(actual_path, baseline_path)
+        pytest.skip(f"wrote the {sys.platform} baseline {baseline_path.name}")
     if not baseline_path.exists():
-        pytest.skip(f"no {sys.platform} baseline; run pytest with --update-screenshots")
+        missing = f"no {sys.platform} baseline; run pytest with --update-screenshots"
+        if os.environ.get("CI"):
+            pytest.fail(f"{missing}, or take {actual_path.name} from the CI screenshots artifact")
+        pytest.skip(missing)
 
     with Image.open(actual_path) as actual, Image.open(baseline_path) as baseline:
         assert actual.size == baseline.size, f"{name}: screenshot size changed"
