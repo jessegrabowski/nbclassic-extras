@@ -14,6 +14,10 @@ def markdown(source, slide_type):
 
 def enter_slideshow(page):
     page.click("#RISE")
+    wait_for_slideshow(page)
+
+
+def wait_for_slideshow(page):
     expect(page.locator("body")).to_have_class(RISE_ENABLED)
     expect(page.locator("div.reveal")).to_have_class(READY)
     # reveal stays "ready" across entries; the slide hash is written once each entry is set up
