@@ -468,3 +468,14 @@ test("the help dialog shows a customized reveal shortcut instead of the default"
     assert.ok(keys.includes("g"));
     assert.equal(keys.includes("home"), false);
 });
+
+test("every entry in the help dialog has a description", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+
+    rise.run("RISE:riseHelp");
+
+    const items = rise.dialogs[0].body.find("li");
+    const entries = Array.from(items, (element) => element.textContent);
+    assert.deepEqual(entries.filter((entry) => entry.includes("undefined")), []);
+});

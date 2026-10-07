@@ -990,7 +990,7 @@ define([
           "<li><strong>with chalkboard enabled:</strong>" +
           "<ul>" +
           helpListItem(cb_keys.toggleChalkboard, cb_help.toggleChalkboard) +
-          helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvaas) +
+          helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvas) +
           helpListItem(cb_keys.colorNext, cb_help.colorNext) +
           helpListItem(cb_keys.colorPrev, cb_help.colorPrev) +
           helpListItem(cb_keys.download, cb_help.download) +
