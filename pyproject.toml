@@ -108,7 +108,8 @@ playwright = "*"
 
 [tool.pixi.feature.test.tasks]
 test = "pytest"
-js-install = "npm ci"
+# npm ci reinstalls from scratch, so it reruns only when the lockfile or node_modules changed
+js-install = { cmd = "npm ci", inputs = ["package.json", "package-lock.json"], outputs = ["node_modules/.package-lock.json"] }
 js-test = { cmd = "node --test 'tests/js/**/*.test.js'", depends-on = ["js-install"] }
 install-browsers = "playwright install chromium"
 
