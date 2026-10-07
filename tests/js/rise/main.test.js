@@ -446,6 +446,21 @@ test("exiting before reveal has started restores the notebook, with no cell sele
     assert.ok(!$("body").hasClass("rise-enabled"));
 });
 
+test("exiting while reveal is still loading restores the notebook and never starts reveal", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], revealLoaded: false });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+    rise.finishRevealLoad();
+    await rise.idle(0);
+
+    assert.equal($("#notebook-container section").length, 0);
+    assert.ok(!$("body").hasClass("rise-enabled"));
+    assert.equal(rise.revealListenerCount("ready"), 0);
+});
+
 test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],

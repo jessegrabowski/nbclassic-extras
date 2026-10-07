@@ -577,6 +577,10 @@ define([
 
     require(modules.map(require.toUrl), function(reveal, RevealNotes) {
       Reveal = reveal;
+      // the slideshow may have been exited while reveal was loading
+      if (!$('body').hasClass('rise-enabled')) {
+        return;
+      }
       // Full list of configuration options available here:
       // https://revealjs.com/config/
 
@@ -1054,7 +1058,7 @@ define([
 
   function Remover() {
     // before its first start finishes, reveal has no input handlers to unbind yet
-    if (Reveal.isReady()) {
+    if (Reveal && Reveal.isReady()) {
       Reveal.configure({minScale: 1.0});
       Reveal.removeEventListeners();
     }
@@ -1120,8 +1124,8 @@ define([
     in addition this is the way to go for getting info on the current fragment
   */
   function reveal_current_position() {
-    let current_slide = Reveal.getCurrentSlide();
     // reveal shows nothing until its first start finishes
+    let current_slide = Reveal && Reveal.getCurrentSlide();
     if (!current_slide) {
       return [0, 0, 0];
     }

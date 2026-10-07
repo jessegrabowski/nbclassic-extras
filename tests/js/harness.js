@@ -251,6 +251,8 @@ function makeReveal(window) {
  * @param {object} [options.notebookConfig] - Jupyter.notebook.config data.
  * @param {boolean} [options.notebookLoaded] - false holds back the notebook's metadata, as
  *     nbclassic does while the notebook JSON is still loading, until finishNotebookLoad().
+ * @param {boolean} [options.revealLoaded] - false holds back reveal.js, as RequireJS does while
+ *     it downloads, until finishRevealLoad().
  */
 async function loadRise({
     cells,
@@ -258,6 +260,7 @@ async function loadRise({
     sections = {},
     notebookConfig = {},
     notebookLoaded = true,
+    revealLoaded = true,
 }) {
     const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(PAGE, {
@@ -303,7 +306,14 @@ async function loadRise({
     };
     const utils = { get_body_data: () => "" };
     const reveal = makeReveal(window);
-    const fakeRequire = (deps, callback) => callback(reveal);
+    const pendingLoads = [];
+    const fakeRequire = (deps, callback) => {
+        if (revealLoaded) {
+            callback(reveal);
+        } else {
+            pendingLoads.push(() => callback(reveal));
+        }
+    };
     fakeRequire.toUrl = (url) => url;
 
     let factory = null;
@@ -330,6 +340,9 @@ async function loadRise({
         },
         revealListenerCount: (name) => reveal.listenerCount(name),
         showSlide: (h, v) => reveal.slide(h, v),
+        finishRevealLoad() {
+            pendingLoads.splice(0).forEach((load) => load());
+        },
         finishNotebookLoad() {
             notebook.metadata = metadata;
             notebook._fully_loaded = true;
