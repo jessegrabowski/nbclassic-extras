@@ -34,8 +34,11 @@ define([
    *   4a) for legacy reasons: use the 'livereveal' key
    *   4b) for more consistency, then override with the 'rise' key
    *
-   * configLoaded alters the complete_config object in place.
-   * it will hold a consolidated set of all relevant settings with their priorities resolved
+   * configLoaded keeps layers 1) to 3), which only change on a page reload, in server_config;
+   * rebuildConfig adds the notebook metadata on top into complete_config, once at load and
+   * again on each slideshow entry, so metadata edited in the open notebook applies.
+   * complete_config holds a consolidated set of all relevant settings with their priorities
+   * resolved
    *
    * it returns a promise that can be then'ed once the config is loaded
    *
@@ -45,7 +48,13 @@ define([
    * waiting for any asynchronous code to complete
    */
 
+  let server_config = {};
   let complete_config = {};
+
+  function rebuildConfig() {
+    complete_config = $.extend(true, {}, server_config, Jupyter.notebook.metadata.livereveal,
+                               Jupyter.notebook.metadata.rise);
+  }
 
   // returns a promise; you can do 'then()' on this promise
   // to do stuff *after* the configuration is completely loaded
@@ -146,20 +155,9 @@ define([
     ]).then(
       // and now we can compute the layered config
       function() {
-        // 1) initialize with hardwired defaults
-        $.extend(true, complete_config, hardwired_config);
-        // 2a) and 2b)
-        $.extend(true, complete_config, config_section_legacy.data);
-        $.extend(true, complete_config, config_section.data);
-        // 3)
-        $.extend(true, complete_config, nbext_configurator.data.rise);
-        // 4a) from the notebook metadata
-        let metadata_legacy = Jupyter.notebook.metadata.livereveal;
-        $.extend(true, complete_config, metadata_legacy);
-        // 4b) ditto
-        let metadata = Jupyter.notebook.metadata.rise;
-        $.extend(true, complete_config, metadata);
-        // console.log("complete_config is OK");
+        server_config = $.extend(true, {}, hardwired_config, config_section_legacy.data,
+                                 config_section.data, nbext_configurator.data.rise);
+        rebuildConfig();
       });
   }
 
@@ -373,15 +371,9 @@ define([
     }
   }
 
-  // the speaker view opens this notebook in a notes.html popup, which starts in the slideshow
+  // the speaker view shows this notebook in iframes whose URL carries a receiver parameter
   function enterSlideshowInSpeakerView() {
-    // Ref: https://stackoverflow.com/a/7739035
-    let url = (window.location != window.parent.location)
-        ? document.referrer
-        : document.location.href;
-    let lastPart = url.substr(url.lastIndexOf('/') + 1);
-
-    if (lastPart === "notes.html") {
+    if (/receiver/i.test(window.location.search)) {
       revealMode();
     }
   }
@@ -453,6 +445,11 @@ define([
     $('div#rise-overlay').remove();
   }
    
+  // reveal.js loads as an AMD module on the first entry, which also initializes it; later entries
+  // reconfigure the same deck
+  let Reveal = null;
+  let reveal_initialized = false;
+
   // listeners RISE adds to reveal, removed on exit so re-entering does not stack a second set
   let reveal_listeners = [];
 
@@ -481,6 +478,49 @@ define([
   function toggleAllRiseButtons() {
     $(RISE_BUTTONS).fadeToggle()
   }
+
+  function chalkboard() {
+    return Reveal.getPlugin('RevealChalkboard');
+  }
+
+  // RISE binds the chalkboard actions as Jupyter shortcuts, so the plugin's own keys stay off
+  const CHALKBOARD_KEYS_OFF = {
+    toggleNotesCanvas: false, toggleChalkboard: false, clear: false, reset: false,
+    resetAll: false, colorNext: false, colorPrev: false, download: false,
+  };
+
+  // `placement` is the chalkboard's toggleChalkboardButton or toggleNotesButton setting: false
+  // leaves the button out, an object may set its left, bottom, top and right
+  function addChalkboardButton(id, icon, handler, placement, default_left) {
+    if (placement === false || $(`#${id}`).length) {
+      return;
+    }
+    let position = (typeof placement === 'object') ? placement : {};
+    $(`<div class="chalkboard-button" id="${id}"><a href="#"><i class="fa ${icon}"></i></a></div>`)
+      .css({
+        position: 'absolute',
+        zIndex: 30,
+        fontSize: '24px',
+        left: position.left || default_left,
+        bottom: position.bottom || '30px',
+        top: position.top || 'auto',
+        right: position.right || 'auto',
+      })
+      .on('click', (event) => {
+        event.preventDefault();
+        handler();
+      })
+      .appendTo('div.reveal');
+  }
+
+  function addChalkboardButtons() {
+    let config = complete_config.chalkboard || {};
+    addChalkboardButton('toggle-chalkboard', 'fa-pencil-square',
+                        () => chalkboard().toggleChalkboard(), config.toggleChalkboardButton,
+                        '30px');
+    addChalkboardButton('toggle-notes', 'fa-pencil',
+                        () => chalkboard().toggleNotesCanvas(), config.toggleNotesButton, '70px');
+  }
   
   function Revealer(selected_slide) {
     
@@ -496,14 +536,14 @@ define([
     $('div#notebook-container').addClass("slides");
 
     // Header
-    // Available themes are in static/css/theme
+    // Available themes are in reveal.js/theme
     let theme = complete_config.theme;
     $('body').addClass(`theme-${theme}`);
-    let theme_path = `./reveal.js/css/theme/${theme}.css`;
+    let theme_path = `./reveal.js/theme/${theme}.css`;
     $('head').prepend(
       `<link rel="stylesheet" href="${require.toUrl(theme_path)}" id="theme" />`);
     // Add reveal css
-    let main_path = "./reveal.js/css/reveal.css";
+    let main_path = "./reveal.js/reveal.css";
     $('head').prepend(
       `<link rel="stylesheet" href="${require.toUrl(main_path)}" id="revealcss" />`);
 
@@ -525,146 +565,138 @@ define([
       `<link rel="stylesheet" href="${name_css}" id="rise-notebook-css" />`);
 
 
-    // Tailer
-    require([
-      // no longer current
-      // https://github.com/hakimel/reveal.js/commit/29b0e86089eb3ec0d4bb5811c9b723dfcf36703c
-      // './reveal.js/lib/js/head.min.js',
-      './reveal.js/js/reveal.js'
-    ].map(require.toUrl),
-            function() {
-              // Full list of configuration options available here:
-              // https://github.com/hakimel/reveal.js#configuration
+    let enable_chalkboard = complete_config.enable_chalkboard;
+    let modules = ['./reveal.js/reveal.js', './reveal.js/plugin/notes.js'];
+    if (enable_chalkboard) {
+      // chalkboard is a plain script that defines window.RevealChalkboard
+      modules.push('./reveal.js-chalkboard/plugin.js');
+      let chalkboard_css_path = './reveal.js-chalkboard/style.css';
+      $('head').append(
+        `<link rel="stylesheet" href="${require.toUrl(chalkboard_css_path)}" id="chalkboardcss" />`);
+    }
 
+    require(modules.map(require.toUrl), function(reveal, RevealNotes) {
+      Reveal = reveal;
+      // the slideshow may have been exited while reveal was loading
+      if (!$('body').hasClass('rise-enabled')) {
+        return;
+      }
+      // Full list of configuration options available here:
+      // https://revealjs.com/config/
 
-              // all these settings are passed along to reveal as-is
-              // xxx it might be just better to copy the whole complete_config instead
-              // of selecting some names, which would allow users to transparently use
-              // all reveal's features
-              let inherited = ['controls', 'progress', 'history', 'width', 'height', 'margin',
-                               'minScale', 'transition', 'slideNumber', 'center', 'help'];
+      // all these settings are passed along to reveal as-is
+      // xxx it might be just better to copy the whole complete_config instead
+      // of selecting some names, which would allow users to transparently use
+      // all reveal's features
+      let inherited = ['controls', 'progress', 'history', 'width', 'height', 'margin',
+                       'minScale', 'transition', 'slideNumber', 'center', 'help'];
 
-              let options = {
+      let options = {
 
-                //parallaxBackgroundImage: 'https://raw.github.com/damianavila/par_IPy_slides_example/gh-pages/figs/star_wars_stormtroopers_darth_vader.jpg',
-                //parallaxBackgroundSize: '2560px 1600px',
+        // turn off reveal native help
+        help: false,
 
-                // turn off reveal native help
-                help: false,
+        // the URL hash names only the slide, and the deck never switches to reveal's scroll
+        // view in a narrow window
+        fragmentInURL: false,
+        scrollActivationWidth: null,
 
-                // key bindings configurable are now defined in the reveal_default_bindings dict - 
-                // this should only be used to unbind keys
-                // note that toggleAllRiseButtons is bound to comma here as jupyter does not
-                // allow to bind anything to comma!
-                keyboard: {
-                  13: null, // Enter disabled
-                  27: null, // ESC disabled
-                  35: null, // End - last slide disabled (will be set in custom keys)
-                  36: null, // Home - first slide disabled (will be set in custom keys)
-                  38: null, // up arrow disabled
-                  40: null, // down arrow disabled
-                  66: null, // b, black pause disabled, use period or forward slash
-                  70: null, // disable fullscreen inside the slideshow, makes codemirror unreliable
-                  72: null, // h, left disabled
-                  74: null, // j, down disabled
-                  75: null, // k, up disabled
-                  76: null, // l, right disabled
-                  78: null, // n, down disabled
-                  79: null, // o disabled
-                  80: null, // p, up disabled
-                  84: null, // t, modified in the custom notes plugin.
-                  87: null, // w, toggle overview
-                  188: toggleAllRiseButtons, // comma
-                },
+        // key bindings configurable are now defined in the reveal_default_bindings dict -
+        // this should only be used to unbind keys
+        // note that toggleAllRiseButtons is bound to comma here as jupyter does not
+        // allow to bind anything to comma!
+        keyboard: {
+          13: null, // Enter disabled
+          27: null, // ESC disabled
+          35: null, // End - last slide disabled (will be set in custom keys)
+          36: null, // Home - first slide disabled (will be set in custom keys)
+          38: null, // up arrow disabled
+          40: null, // down arrow disabled
+          66: null, // b, black pause disabled, use period or forward slash
+          70: null, // disable fullscreen inside the slideshow, makes codemirror unreliable
+          71: null, // g, jump to slide disabled
+          72: null, // h, left disabled
+          74: null, // j, down disabled
+          75: null, // k, up disabled
+          76: null, // l, right disabled
+          78: null, // n, down disabled
+          79: null, // o disabled
+          80: null, // p, up disabled
+          83: null, // s, the notes plugin's speaker view key; RISE opens it with t
+          87: null, // w, toggle overview
+          188: toggleAllRiseButtons, // comma
+        },
 
-                dependencies: [
-                  // Optional libraries used to extend on reveal.js
-                  /* { src: "static/custom/livereveal/reveal.js/lib/js/classList.js",
-                   *   condition: function() { return !document.body.classList; } },
-                   * { src: "static/custom/livereveal/reveal.js/plugin/highlight/highlight.js",
-                   *   async: true,
-                   *  callback: function() { hljs.initHighlightingOnLoad(); } },
-                   */
-                  { src: require.toUrl("./reveal.js/plugin/notes/notes.js"),
-                    async: true,
-                  },
-                ],
+        plugins: [RevealNotes],
+      };
 
-              };
+      for (let setting of inherited) {
+        options[setting] = complete_config[setting];
+      }
 
-              for (let setting of inherited) {
-                options[setting] = complete_config[setting];
-              }
+      if (enable_chalkboard) {
+        options.chalkboard = $.extend(
+          true, {}, complete_config.chalkboard, {keyBindings: CHALKBOARD_KEYS_OFF});
+        options.plugins.push(window.RevealChalkboard);
+      }
 
-              //$.extend(options.keyboard, reveal_bindings);
-	      
-              ////////// set up chalkboard if configured
-              let enable_chalkboard = complete_config.enable_chalkboard;
-              if (enable_chalkboard) {
-                if ("chalkboard" in complete_config) {
-                  options["chalkboard"] = complete_config["chalkboard"];
-                }
-                options.dependencies.push({ src: require.toUrl('./reveal.js-chalkboard/chalkboard.js'),
-                                            async: true });
-                // xxx need to explore the option of registering jupyter actions
-                // and have jupyter handle the keyboard entirely instead of this approach
-                // could hopefully avoid conflicting behaviours in case of overlaps
-                
-                // comment from thecker: 
-                // this is not implemented - reveal.js & chalkboard bindings are now defined in
-                // nbconfing and setupKeys + registerJupyterActions is used to set the bindings
-                
-                //$.extend(options.keyboard, cb_bindings);
-              }
+      let started;
+      if (reveal_initialized) {
+        // the previous exit hid these inline; reveal sets the display of the ones it
+        // manages again when configured, the others would stay hidden
+        revealChrome().css('display', '');
+        // chalkboard buttons outlive the slideshow, so start each entry from shown, or hidden
+        // when chalkboard has since been turned off
+        $('#toggle-chalkboard, #toggle-notes').toggle(Boolean(enable_chalkboard));
+        Reveal.configure(options);
+        started = Promise.resolve();
+      } else {
+        started = Reveal.initialize(options);
+        reveal_initialized = true;
+      }
 
-              if (Reveal.initialized) {
-                // the previous exit hid these inline; reveal sets the display of the ones it
-                // manages again when configured, the others would stay hidden
-                revealChrome().css('display', '');
-                // chalkboard buttons outlive the slideshow, so start each entry from shown
-                $('#toggle-chalkboard, #toggle-notes').show();
-                //delete options["dependencies"];
-                Reveal.configure(options);
-                //console.log("Reveal is already initialized and is being configured");
-              } else {
-                Reveal.initialize(options);
-                //console.log("Reveal initialized");
-                Reveal.initialized = true;
-              }
+      addRevealListener('ready', function(event) {
+        Unselecter();
+        // check and set the scrolling slide when you start the whole thing
+        setScrollingSlide();
+        autoSelectHook();
+      });
 
-              addRevealListener('ready', function(event) {
-                Unselecter();
-                // check and set the scrolling slide when you start the whole thing
-                setScrollingSlide();
-                autoSelectHook();
-              });
+      addRevealListener('slidechanged', function(event) {
+        Unselecter();
+        // check and set the scrolling slide every time the slide change
+        setScrollingSlide();
+        autoSelectHook();
+      });
 
-              addRevealListener('slidechanged', function(event) {
-                Unselecter();
-                // check and set the scrolling slide every time the slide change
-                setScrollingSlide();
-                autoSelectHook();
-              });
+      addRevealListener('fragmentshown', function(event) {
+        autoSelectHook();
+      });
+      addRevealListener('fragmenthidden', function(event) {
+        autoSelectHook();
+      });
 
-              addRevealListener('fragmentshown', function(event) {
-                autoSelectHook();
-              });
-              addRevealListener('fragmenthidden', function(event) {
-                autoSelectHook();
-              });
+      // Sync when an output is generated.
+      setupOutputObserver();
+      addHeaderFooterOverlay();
 
-              // Sync when an output is generated.
-              setupOutputObserver();
+      started.then(function() {
+        // the slideshow may have been exited before reveal finished starting
+        if (!$('body').hasClass('rise-enabled')) {
+          Reveal.removeEventListeners();
+          return;
+        }
+        setStartingSlide(selected_slide);
+        if (enable_chalkboard) {
+          addChalkboardButtons();
+        }
+      });
 
-              // Setup the starting slide
-              setStartingSlide(selected_slide);
-              addHeaderFooterOverlay();
-
-              if (! complete_config.show_buttons_on_startup) {
-                /* safer, and nicer too, to wait for reveal extensions to start */
-                setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
-              }
-            });
+      if (! complete_config.show_buttons_on_startup) {
+        /* safer, and nicer too, to wait for reveal extensions to start */
+        setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
+      }
+    });
   }
 
   function Unselecter(){
@@ -725,16 +757,16 @@ define([
         'riseHelp': riseHelp,  // '?' show our help
       },
       'chalkboard': { // API calls for RevealChalkboard plug-in
-        'clear': () => RevealChalkboard.clear(), // clear full size chalkboard
-        'reset': () => RevealChalkboard.reset(), // reset chalkboard data on current slide
-        'toggleChalkboard': () => RevealChalkboard.toggleChalkboard(),  // toggle full size chalkboard
-        'toggleNotesCanvas': () => RevealChalkboard.toggleNotesCanvas(), // toggle notes (slide-local)
-        'colorNext': () => RevealChalkboard.colorNext(), // next color
-        'colorPrev': () => RevealChalkboard.colorPrev(), // previous color
-        'download': () => RevealChalkboard.download()  //  download recorded chalkboard drawing
+        'clear': () => chalkboard().clear(), // clear full size chalkboard
+        'reset': () => chalkboard().reset(), // reset chalkboard data on current slide
+        'toggleChalkboard': () => chalkboard().toggleChalkboard(),  // toggle full size chalkboard
+        'toggleNotesCanvas': () => chalkboard().toggleNotesCanvas(), // toggle notes (slide-local)
+        'colorNext': () => chalkboard().colorNext(), // next color
+        'colorPrev': () => chalkboard().colorPrev(), // previous color
+        'download': () => chalkboard().download()  //  download recorded chalkboard drawing
       },
       'notes': { // API calls for RevealNotes plug-in
-          'openNotes' : () => RevealNotes.open(), // open speaker notes window
+          'openNotes' : () => Reveal.getPlugin('notes').open(), // open speaker notes window
       },
   }
   
@@ -787,19 +819,16 @@ define([
   
   // update reveal bindings with custom key codes
   function updateRevealBindings(default_bindings){
-    
-    // console.log(`complete_config in updateRevealBindings`, complete_config);
+    let bindings = $.extend(true, {}, default_bindings);
     let custom_shortcuts = complete_config.reveal_shortcuts;
-    // console.log(`custom_shortcuts in updateRevealBindings`, custom_shortcuts);
-    
     if (custom_shortcuts) {
       for (const module of Object.keys(custom_shortcuts)){
         for (const action of Object.keys(custom_shortcuts[module])){
-           default_bindings[module][action] = custom_shortcuts[module][action];
+           bindings[module][action] = custom_shortcuts[module][action];
         }
       }
     }
-    return default_bindings;
+    return bindings;
   }
   
 
@@ -1029,9 +1058,12 @@ define([
   }
 
   function Remover() {
-    Reveal.configure({minScale: 1.0});
+    // before its first start finishes, reveal has no input handlers to unbind yet
+    if (Reveal && Reveal.isReady()) {
+      Reveal.configure({minScale: 1.0});
+      Reveal.removeEventListeners();
+    }
     clearTimeout(pending_sync);
-    Reveal.removeEventListeners();
     removeRevealListeners();
     $('body').removeClass("rise-enabled");
     let theme = complete_config.theme;
@@ -1048,6 +1080,7 @@ define([
 
     $('#theme').remove();
     $('#revealcss').remove();
+    $('#chalkboardcss').remove();
     $('#rise-custom-css').remove();
     $('#rise-notebook-css').remove();
 
@@ -1092,7 +1125,11 @@ define([
     in addition this is the way to go for getting info on the current fragment
   */
   function reveal_current_position() {
-    let current_slide = Reveal.getCurrentSlide();
+    // reveal shows nothing until its first start finishes
+    let current_slide = Reveal && Reveal.getCurrentSlide();
+    if (!current_slide) {
+      return [0, 0, 0];
+    }
     // href of the form slide-2-3
     let href = current_slide.id;
     let chunks = href.split('-');
@@ -1274,6 +1311,7 @@ define([
     let tag = $('#maintoolbar').hasClass('reveal_tagging');
 
     if (!tag) {
+      rebuildConfig();
       // Preparing the new reveal-compatible structure
       let selected_slide = markupSlides($('div#notebook-container'));
       // Adding the reveal stuff

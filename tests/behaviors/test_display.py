@@ -18,6 +18,14 @@ def test_theme_option_loads_and_applies_the_theme_stylesheet(nbclassic_server, p
     # a stylesheet that failed to load has no readable rules
     rule_count = "(link) => { try { return link.sheet.cssRules.length; } catch { return 0; } }"
     assert stylesheet.evaluate(rule_count) > 0
+    # the page behind the slides takes the theme's background, not nbclassic's
+    theme_background = page.evaluate(
+        "() => { const probe = document.createElement('div');"
+        " probe.style.backgroundColor = 'var(--r-background-color)';"
+        " document.body.append(probe);"
+        " const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; }"
+    )
+    expect(page.locator("body")).to_have_css("background-color", theme_background)
 
 
 def test_transition_option_sets_the_reveal_transition(nbclassic_server, page):

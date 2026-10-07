@@ -1,0 +1,38 @@
+--- a/reveal.js-chalkboard/plugin.js
++++ b/reveal.js-chalkboard/plugin.js
+@@ -234,7 +234,7 @@
+ 
+ 		if ( config.boardmarkerWidth || config.penWidth ) boardmarkerWidth = config.boardmarkerWidth || config.penWidth;
+ 		if ( config.chalkWidth ) chalkWidth = config.chalkWidth;
+-		if ( config.chalkEffect ) chalkEffect = config.chalkEffect;
++		if ( config.chalkEffect != undefined ) chalkEffect = config.chalkEffect;
+ 		if ( config.rememberColor ) rememberColor = config.rememberColor;
+ 		if ( config.eraser ) eraser = config.eraser;
+ 		if ( config.boardmarkers ) boardmarkers = config.boardmarkers;
+@@ -475,7 +475,7 @@
+ 			if ( boardHandle ) {
+ 				var handle = document.createElement( 'div' );
+ 				handle.classList.add( 'boardhandle' );
+-				handle.innerHTML = '<ul><li><a id="previousboard" href="#" title="Previous board"><i class="fas fa-chevron-up"></i></a></li><li><a id="nextboard" href="#" title="Next board"><i class="fas fa-chevron-down"></i></a></li></ul>';
++				handle.innerHTML = '<ul><li><a id="previousboard" href="#" title="Previous board"><i class="fa fa-chevron-up"></i></a></li><li><a id="nextboard" href="#" title="Next board"><i class="fa fa-chevron-down"></i></a></li></ul>';
+ 				handle.querySelector( '#previousboard' ).addEventListener( 'click', function ( e ) {
+ 					e.preventDefault();
+ 					switchBoard( board - 1 );
+@@ -519,13 +519,13 @@
+  ******************************************************************/
+ 
+ 	var storage = [ {
+-			width: Reveal.getConfig().width,
+-			height: Reveal.getConfig().height,
++			width: drawingCanvas[ 0 ].width - 2 * drawingCanvas[ 0 ].xOffset,
++			height: drawingCanvas[ 0 ].height - 2 * drawingCanvas[ 0 ].yOffset,
+ 			data: []
+ 		},
+ 		{
+-			width: Reveal.getConfig().width,
+-			height: Reveal.getConfig().height,
++			width: drawingCanvas[ 1 ].width,
++			height: drawingCanvas[ 1 ].height,
+ 			data: []
+ 		}
+ 	];

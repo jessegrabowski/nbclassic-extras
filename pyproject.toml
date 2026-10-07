@@ -98,6 +98,10 @@ nbclassic = ">=1.3"
 [tool.pixi.pypi-dependencies]
 nbclassic-extras = { path = ".", editable = true }
 
+[tool.pixi.tasks]
+# Rebuild static/rise/reveal.js and reveal.js-chalkboard from pinned upstream tarballs and patches.
+vendor-reveal = "python -I scripts/vendor_reveal.py"
+
 [tool.pixi.feature.test.dependencies]
 pytest = ">=8"
 nodejs = ">=22.12"

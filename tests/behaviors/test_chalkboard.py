@@ -83,3 +83,14 @@ def test_backslash_downloads_the_drawings(nbclassic_server, page):
         page.keyboard.press("\\")
 
     assert download.value.suggested_filename == "chalkboard.json"
+
+
+def test_the_plugins_own_keys_stay_off_beside_rises(nbclassic_server, page):
+    metadata = {"rise": {"enable_chalkboard": True}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+
+    # c is the plugin's own notes canvas toggle; had it fired, ] would close the canvas again
+    page.keyboard.press("c")
+    page.keyboard.press("]")
+    expect(page.locator("#notescanvas")).to_have_css("pointer-events", "auto")

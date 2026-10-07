@@ -1,5 +1,5 @@
-# static/ and licenses/ hold upstream files that must stay byte-identical to their source.
-exclude: ^(static|licenses)/
+# static/, licenses/ and the reveal patches hold upstream text that must stay byte-identical.
+exclude: ^(static|licenses|scripts/reveal_patches)/
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
