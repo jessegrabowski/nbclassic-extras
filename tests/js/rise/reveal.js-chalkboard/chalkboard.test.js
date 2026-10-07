@@ -68,10 +68,11 @@ test("downloaded drawings are sized to the canvases, not reveal's slide size", a
     plugin.window.RevealChalkboard.download();
 
     const [blob] = plugin.downloads;
-    const storage = JSON.parse(await blob.text());
-    assert.equal(storage[1].width, innerWidth);
-    assert.equal(storage[1].height, innerHeight);
-    assert.notEqual(storage[0].width, 960);
+    const [notes, board] = JSON.parse(await blob.text());
+    assert.deepEqual([board.width, board.height], [innerWidth, innerHeight]);
+    // the notes canvas covers the slide area, letterboxed to reveal's 960x700 aspect ratio
+    assert.equal(notes.width, innerWidth);
+    assert.ok(Math.abs(notes.height - (innerWidth * 700) / 960) < 1e-9);
 });
 
 function chalkTexturePatches(plugin) {
