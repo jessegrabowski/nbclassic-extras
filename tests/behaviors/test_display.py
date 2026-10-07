@@ -119,11 +119,3 @@ def test_tall_subslide_does_not_scroll_by_default(nbclassic_server, page):
     overflows = "(element) => element.offsetHeight > element.closest('.reveal').offsetHeight * 0.95"
     assert subslide.evaluate(overflows)
     expect(subslide).not_to_have_css("overflow-y", "scroll")
-
-
-def test_autolaunch_enters_the_slideshow_on_load(nbclassic_server, page):
-    metadata = {"rise": {"autolaunch": True}}
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
-
-    expect(page.locator("body")).to_have_class(has_class("rise-enabled"))
-    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Alpha")

@@ -55,7 +55,6 @@ define([
     let hardwired_config = {
 
       // behaviour
-      autolaunch: false,
       start_slideshow_at: 'selected',
       auto_select: 'code',
       auto_select_fragment: true,
@@ -85,8 +84,6 @@ define([
         'toggle-slide': 'shift-i',
         'toggle-subslide': 'shift-b',
         'toggle-fragment': 'shift-g',
-        // this can be helpful
-        'rise-nbconfigurator': 'shift-c',
         // unassigned by default
         'toggle-notes': '',
         'toggle-skip': '',
@@ -114,7 +111,6 @@ define([
 
       // plugins
       enable_chalkboard: false,
-      enable_leap_motion: false,
     };
 
     // honour the 2 names: 'livereveal' and 'rise'
@@ -165,24 +161,6 @@ define([
         $.extend(true, complete_config, metadata);
         // console.log("complete_config is OK");
       });
-  }
-
-  /*
-   * this function is a heuristic that says if this notebook seems to
-   * be meant to be a slideshow.
-   * this primarily is for autolaunch, so that somebody who would
-   * enable autolaunch in her ~/.jupyter/ area would not
-   * see RISE trigger on every single notebook
-   *
-   * xxx note that this might take too long on large notebooks
-   * a possible improvement would be to look for the first, say, 10 cells only
-   * as a matter of fact, in most cases the first cell would be a slide cell really
-   */
-  function is_slideshow(notebook) {
-    for (let cell of notebook.get_cells())
-      if (is_slide(cell) || is_subslide(cell))
-        return true;
-    return false;
   }
 
   /*
@@ -395,20 +373,8 @@ define([
     }
   }
 
-  /*
-   * Setup the auto-launch function, which checks metadata to see if
-   * RISE should launch automatically when the notebook is opened.
-   *
-   * this will trigger only on notebooks that have
-   * either a 'livereveal' or a 'rise' section in their metadata
-   * this is because autolaunch can be enabled in nbextensions_configurator
-   * and so can possibly have a too big impact if we are not careful
-   */
-  function autoLaunch() {
-    if (complete_config.autolaunch && is_slideshow(Jupyter.notebook)) {
-      revealMode();
-    }
-
+  // the speaker view opens this notebook in a notes.html popup, which starts in the slideshow
+  function enterSlideshowInSpeakerView() {
     // Ref: https://stackoverflow.com/a/7739035
     let url = (window.location != window.parent.location)
         ? document.referrer
@@ -630,14 +596,6 @@ define([
                 options[setting] = complete_config[setting];
               }
 
-              ////////// set up the leap motion integration if configured
-              let enable_leap_motion = complete_config.enable_leap_motion;
-              if (enable_leap_motion) {
-                options.dependencies.push({ src: require.toUrl('./reveal.js/plugin/leap/leap.js'),
-                                            async: true });
-                options.leap = enable_leap_motion;
-              }
-              
               //$.extend(options.keyboard, reveal_bindings);
 	      
               ////////// set up chalkboard if configured
@@ -1284,19 +1242,8 @@ define([
       "edit-all-cells", "RISE");
 
     // because the `Edit Keyboard Shortcuts` utility does not mention the
-    // actions prefix (i.e. 'RISE' in our case), we choose to make these two
-    // action names start with `rise-` even if it's a bit redundant.
-
-    // define an action that goes to the nbconfigurator page for rise
-    let nbconfigurator = function() {
-      let url = "/nbextensions/?nbextension=rise/main";
-      window.open(url, '_blank');
-    }
-
-    actions.register(
-      {help: 'open the nbconfigurator page for RISE',
-       handler: nbconfigurator},
-      "rise-nbconfigurator", "RISE");
+    // actions prefix (i.e. 'RISE' in our case), we choose to make this
+    // action name start with `rise-` even if it's a bit redundant.
 
     // mostly for debug / information
     actions.register(
@@ -1403,7 +1350,6 @@ define([
 
   function showConfig() {
     console.log("RISE configuration", complete_config);
-    console.log(`Current notebook ${is_slideshow(Jupyter.notebook) ? "is" : "not"} a slideshow`);
   }
 
 
@@ -1421,7 +1367,7 @@ define([
     //      .then(showConfig)
       .then(registerJupyterActions)
       .then(addButtonsAndShortcuts)
-      .then(autoLaunch)
+      .then(enterSlideshowInSpeakerView)
     ;
 
   }

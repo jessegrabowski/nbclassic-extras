@@ -320,6 +320,7 @@ test("the default RISE shortcuts are bound in command mode", async (t) => {
     assert.equal(bindings["shift-i"], "RISE:toggle-slide");
     assert.equal(bindings["shift-b"], "RISE:toggle-subslide");
     assert.equal(bindings["shift-g"], "RISE:toggle-fragment");
+    assert.equal(bindings["shift-c"], undefined);
 });
 
 test("a custom shortcut replaces its default and an empty one unbinds it", async (t) => {
