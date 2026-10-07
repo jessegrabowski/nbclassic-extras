@@ -536,5 +536,9 @@ test("an empty reveal shortcut leaves its action unbound and still shows the hel
     rise.run("RISE:riseHelp");
 
     assert.equal(rise.shortcutMap("command")[""], undefined);
-    assert.equal(rise.dialogs.length, 1);
+    assert.notEqual(rise.shortcutMap("command").w, "RISE:toggleOverview");
+    const overview = rise.dialogs[0].body.find("li").filter((index, element) => {
+        return element.textContent.includes("overview");
+    });
+    assert.equal(overview.find("em").text(), "unbound");
 });
