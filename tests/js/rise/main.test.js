@@ -189,7 +189,7 @@ test("without any config the slideshow uses the simple theme", async (t) => {
     rise.run("RISE:slideshow");
 
     assert.ok($("body").hasClass("theme-simple"));
-    assert.match($("link#theme").attr("href"), /reveal\.js\/css\/theme\/simple\.css$/);
+    assert.match($("link#theme").attr("href"), /reveal\.js\/theme\/simple\.css$/);
 });
 
 CONFIG_LAYERS.forEach(([layerName, layerTheme], top) => {
@@ -372,6 +372,48 @@ test("entering and exiting leave reveal's class names in notebook output alone",
     assert.equal(hiddenControls.css("display"), "none");
 });
 
+test("chalkboard gets toggle buttons with Font Awesome 4 icons unless one is turned off", async (t) => {
+    const withBoth = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true } },
+    });
+    const withoutNotes = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true, chalkboard: { toggleNotesButton: false } } },
+    });
+    t.after(() => {
+        withBoth.close();
+        withoutNotes.close();
+    });
+
+    withBoth.run("RISE:slideshow");
+    withoutNotes.run("RISE:slideshow");
+    await withBoth.idle(0);
+    await withoutNotes.idle(0);
+
+    const icon = (rise, id) => rise.$(`#${id} i`).attr("class");
+    assert.equal(icon(withBoth, "toggle-chalkboard"), "fa fa-pencil-square");
+    assert.equal(icon(withBoth, "toggle-notes"), "fa fa-pencil");
+    assert.equal(withoutNotes.$("#toggle-chalkboard").length, 1);
+    assert.equal(withoutNotes.$("#toggle-notes").length, 0);
+});
+
+test("exiting before reveal has started restores the notebook, with no cell selected", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide"), cell("Bravo", "slide")] });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+    // with no selection, exiting asks reveal which slide it shows, and it shows none yet
+    rise.cells.forEach((c) => c.unselect());
+    rise.run("RISE:slideshow");
+    await rise.idle(0);
+
+    assert.equal($("#notebook-container section").length, 0);
+    assert.equal($("#notebook-container > .cell").length, 2);
+    assert.ok(!$("body").hasClass("rise-enabled"));
+});
+
 test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],
@@ -380,7 +422,7 @@ test("show_buttons_on_startup false hides every RISE button on each entry", asyn
     t.after(rise.close);
     const { $ } = rise;
     $.fx.off = true;
-    // the chalkboard plugin adds these, and they outlive the slideshow
+    // RISE adds these once chalkboard has started, and they outlive the slideshow
     $('<div id="toggle-chalkboard"></div><div id="toggle-notes"></div>').appendTo("body");
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const shown = () => Array.from($("#help_b, #exit_b, #toggle-chalkboard, #toggle-notes"))

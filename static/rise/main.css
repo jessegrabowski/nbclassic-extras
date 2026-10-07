@@ -7,6 +7,12 @@
 :not(body).rise-enabled {
   background-color: #fff;
 }
+/* reveal themes color the .reveal-viewport, which is <body>; nbclassic's .notebook_app rule on
+   the same element comes later in the page, so the theme's colors are applied again here */
+body.notebook_app.rise-enabled.reveal-viewport {
+  background: var(--r-background);
+  background-color: var(--r-background-color);
+}
 .rise-enabled {
   transition-property: all;
   transition-duration: 0.2s;

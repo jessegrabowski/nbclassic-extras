@@ -26,18 +26,24 @@ class Source:
 
 SOURCES = [
     Source(
-        url="https://registry.npmjs.org/reveal.js/-/reveal.js-3.9.2.tgz",
-        sha512="Dvv2oA9FrtOHE2DWj5js8pMRfwq++Wmvsn1EyAdYLC80lBjTphns+tPsB652Bnvep9AVviuVS/b4XoVY9rXHLA==",
-        copies={"package": "reveal.js"},
+        url="https://registry.npmjs.org/reveal.js/-/reveal.js-6.0.2.tgz",
+        sha512="JYIg5D9aoxoaLeb84O+OvAwsKWdIavVgEDScxtYEXFCT6t6TQrhNtSgogcjdCpdLsWglhJn3zyE3fUOwiH5KEg==",
+        copies={
+            "package/LICENSE": "reveal.js/LICENSE",
+            "package/dist/reveal.js": "reveal.js/reveal.js",
+            "package/dist/reveal.css": "reveal.js/reveal.css",
+            "package/dist/theme": "reveal.js/theme",
+            "package/dist/plugin/notes.js": "reveal.js/plugin/notes.js",
+        },
     ),
     Source(
-        url="https://codeload.github.com/rajgoel/reveal.js-plugins/tar.gz/3.9.0",
-        sha512="BMZrTU22b9krz/CFes0Y01fgmzeFL0/W95wzuruX393Vq2qGrw0qj6/Etn1vPadJfp4ivImOAcHdRZNlMfPdWA==",
-        copies={"reveal.js-plugins-3.9.0/chalkboard": "reveal.js-chalkboard"},
+        url="https://codeload.github.com/rajgoel/reveal.js-plugins/tar.gz/4.6.0",
+        sha512="Cbn7E8n17cK/6Hq+qwEginjzlfuq/ukyo2uwcVoXm6xQ8btI1SBS7cjf60mMSFij2jS7szYBG0hklG1icUaujw==",
+        copies={"reveal.js-plugins-4.6.0/chalkboard": "reveal.js-chalkboard"},
     ),
 ]
 
-PATCHES = ["reveal-css.patch", "themes.patch", "notes-plugin.patch", "chalkboard.patch"]
+PATCHES = ["notes-plugin.patch", "chalkboard.patch"]
 
 
 def download(source: Source) -> bytes:

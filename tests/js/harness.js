@@ -204,18 +204,24 @@ function configSection(data) {
 }
 
 // Holds the slide reveal is showing and fires its ready event, so RISE's own lookups and
-// listeners work. Tests assert only on the listeners RISE leaves registered, since the rest of the
-// reveal API changes when RISE moves to reveal.js 6.
+// listeners work. Tests assert only on the listeners RISE leaves registered, not on calls into
+// reveal.
 function makeReveal(window) {
     let current = null;
     let listeners = [];
+    let ready = false;
     return {
         initialize() {
             const fireReady = () => listeners
                 .filter((listener) => listener.name === "ready")
                 .forEach((listener) => listener.callback());
-            window.setTimeout(fireReady, 0);
+            return new Promise((resolve) => window.setTimeout(() => {
+                ready = true;
+                fireReady();
+                resolve();
+            }, 0));
         },
+        isReady: () => ready,
         configure() {},
         addEventListener(name, callback) {
             listeners.push({ name: name, callback: callback });
@@ -296,10 +302,10 @@ async function loadRise({
         },
     };
     const utils = { get_body_data: () => "" };
-    const fakeRequire = (deps, callback) => callback();
+    const reveal = makeReveal(window);
+    const fakeRequire = (deps, callback) => callback(reveal);
     fakeRequire.toUrl = (url) => url;
 
-    window.Reveal = makeReveal(window);
     let factory = null;
     window.define = (deps, body) => {
         factory = body;
@@ -322,8 +328,8 @@ async function loadRise({
             }
             action.handler();
         },
-        revealListenerCount: (name) => window.Reveal.listenerCount(name),
-        showSlide: (h, v) => window.Reveal.slide(h, v),
+        revealListenerCount: (name) => reveal.listenerCount(name),
+        showSlide: (h, v) => reveal.slide(h, v),
         finishNotebookLoad() {
             notebook.metadata = metadata;
             notebook._fully_loaded = true;
@@ -335,20 +341,19 @@ async function loadRise({
 }
 
 /**
- * Load a reveal.js plugin script from static/rise into a fresh page with a fake Reveal.
+ * Load a reveal.js plugin script from static/rise into a fresh page, with a fake deck to init it.
  *
  * @param {string} relativePath - script path under static/rise.
  * @param {string} slidesHtml - markup placed inside div.reveal > div.slides.
- * @param {object} [options.config] - what Reveal.getConfig() returns.
- * @param {string} [options.query] - query string on the script's URL, as a cache-buster adds.
+ * @param {object} [options.config] - what deck.getConfig() returns.
+ * @param {object} [options.context] - the 2D context every canvas returns; draws nothing by default.
  */
 function loadRevealPlugin(relativePath,
                           slidesHtml,
-                          { config = {}, query = "" } = {}) {
-    const scriptUrl = `http://localhost:8888/nbextensions/rise/${relativePath}${query}`;
+                          { config = {}, context = null } = {}) {
     const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(
-        `<!DOCTYPE html><html><head><script src="${scriptUrl}"></script></head><body>
+        `<!DOCTYPE html><html><body>
         <div class="reveal"><div class="slides">${slidesHtml}</div></div></body></html>`,
         {
             url: "http://localhost:8888/notebooks/slides.ipynb",
@@ -357,33 +362,36 @@ function loadRevealPlugin(relativePath,
         },
     );
     const window = dom.window;
-    const popups = [];
-    window.open = (url, name) => {
-        const popup = { url: url, name: name, closed: false, postMessage() {}, focus() {} };
-        popups.push(popup);
-        return popup;
-    };
     // jsdom has no canvas: give plugins a 2D context whose drawing calls do nothing.
     const noOpContext = new Proxy({}, { get: (target, name) => target[name] ?? (() => {}) });
-    window.HTMLCanvasElement.prototype.getContext = () => noOpContext;
+    window.HTMLCanvasElement.prototype.getContext = () => context ?? noOpContext;
     const downloads = [];
     window.URL.createObjectURL = (blob) => {
         downloads.push(blob);
         return "blob:download";
     };
-    window.Reveal = {
-        registerPlugin() {},
+    const document = window.document;
+    const listeners = [];
+    const deck = {
         getConfig: () => config,
-        getState: () => ({ indexh: 0, indexv: 0 }),
-        getCurrentSlide: () => window.document.querySelector(".slides section section"),
-        getRevealElement: () => window.document.querySelector(".reveal"),
+        getIndices: () => ({ h: 0, v: 0 }),
+        getSlides: () => Array.from(document.querySelectorAll(".slides section section")),
+        getSlidesElement: () => document.querySelector(".slides"),
+        getTotalSlides: () => document.querySelectorAll(".slides section section").length,
+        getCurrentSlide: () => document.querySelector(".slides section section"),
+        isAutoSliding: () => false,
         addKeyBinding() {},
-        addEventListener() {},
+        addEventListener(name, callback) {
+            listeners.push({ name: name, callback: callback });
+        },
+        emit(name) {
+            listeners.filter((l) => l.name === name).forEach((l) => l.callback({}));
+        },
     };
     window.eval(fs.readFileSync(path.join(REPO_ROOT, "static", "rise", relativePath), "utf8"));
     return {
         window: window,
-        popups: popups,
+        deck: deck,
         downloads: downloads,
         close: () => closePage(window),
     };
