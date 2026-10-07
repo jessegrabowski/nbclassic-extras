@@ -87,19 +87,22 @@ def test_header_footer_and_backimage_frame_the_slideshow(nbclassic_server, page)
 
     header = page.locator("#rise-header")
     footer = page.locator("#rise-footer")
-    backimage = page.locator("#rise-backimage")
     expect(header).to_have_text("Course title")
     expect(footer).to_have_text("Page footer")
     expect(header).to_be_visible()
     expect(footer).to_be_visible()
 
-    slideshow = page.locator("div.reveal").bounding_box()
-    assert header.bounding_box()["y"] == pytest.approx(slideshow["y"], abs=1)
-    footer_box = footer.bounding_box()
-    footer_bottom = footer_box["y"] + footer_box["height"]
-    assert footer_bottom == pytest.approx(slideshow["y"] + slideshow["height"], abs=1)
+    # one layout snapshot: nbclassic resizes the notebook after RISE hides its header
+    boxes = page.evaluate(
+        "() => Object.fromEntries(['div.reveal', '#rise-header', '#rise-footer', '#rise-backimage']"
+        ".map((selector) => [selector, document.querySelector(selector).getBoundingClientRect()"
+        ".toJSON()]))"
+    )
+    slideshow = boxes["div.reveal"]
+    assert boxes["#rise-header"]["top"] == pytest.approx(slideshow["top"], abs=1)
+    assert boxes["#rise-footer"]["bottom"] == pytest.approx(slideshow["bottom"], abs=1)
     # RISE sizes the image to 100% of an overlay with no height, so only its width is fixed
-    assert backimage.bounding_box()["width"] == pytest.approx(slideshow["width"], abs=1)
+    assert boxes["#rise-backimage"]["width"] == pytest.approx(slideshow["width"], abs=1)
 
 
 def test_overlay_option_replaces_the_header_and_footer(nbclassic_server, page):
