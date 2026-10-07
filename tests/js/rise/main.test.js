@@ -466,12 +466,16 @@ test("exiting keeps a custom shift-enter binding", async (t) => {
     assert.equal(rise.shortcuts.edit.get_shortcut("shift-enter"), "custom:run");
 });
 
-test("exiting keeps the first cell selected when it was selected", async (t) => {
+test("exiting keeps the first cell selected while another slide shows", async (t) => {
     const rise = await loadRise({ cells: [cell("Alpha", "slide"), cell("Bravo", "slide")] });
     t.after(rise.close);
 
     rise.run("RISE:slideshow");
+    // reveal's ready, which unselects every cell
+    await rise.idle(0);
     rise.showSlide(1, 0);
+    // k (select-previous-cell) still works inside the slideshow and reaches the hidden cell
+    rise.cells[0].select();
     rise.run("RISE:slideshow");
 
     assert.deepEqual(rise.cells.map((c) => c.selected), [true, false]);
