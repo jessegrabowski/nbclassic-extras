@@ -4,7 +4,7 @@
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
-const { JSDOM } = require("jsdom");
+const { JSDOM, VirtualConsole } = require("jsdom");
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 const MAIN_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "rise", "main.js"), "utf8");
@@ -32,6 +32,26 @@ const PAGE = `<!DOCTYPE html><html><head></head><body>
 <div id="maintoolbar"></div>
 <div id="notebook"><div id="notebook-container"></div><div class="end_space"></div></div>
 </body></html>`;
+
+// jsdom only logs an error a page's script throws in a timer or event handler; this console
+// records it, and closePage rethrows it so the test fails.
+function strictConsole() {
+    const virtualConsole = new VirtualConsole();
+    const errors = [];
+    virtualConsole.forwardTo(console, { jsdomErrors: "none" });
+    virtualConsole.on("jsdomError", (error) => {
+        if (error.type === "unhandled-exception") {
+            errors.push(error.cause ?? error);
+        }
+    });
+    const closePage = (window) => {
+        window.close();
+        if (errors.length > 0) {
+            throw errors[0];
+        }
+    };
+    return { virtualConsole: virtualConsole, closePage: closePage };
+}
 
 // A slide_type of undefined leaves the cell without slideshow metadata.
 function cell(source, slideType, cellType = "markdown") {
@@ -231,10 +251,12 @@ async function loadRise({
     notebookConfig = {},
     notebookLoaded = true,
 }) {
+    const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(PAGE, {
         url: "http://localhost:8888/notebooks/slides.ipynb",
         runScripts: "outside-only",
         pretendToBeVisual: true,
+        virtualConsole: virtualConsole,
     });
     const window = dom.window;
     window.eval(JQUERY_JS);
@@ -306,7 +328,7 @@ async function loadRise({
             notebook.events.trigger("notebook_loaded.Notebook");
         },
         idle: (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
-        close: () => window.close(),
+        close: () => closePage(window),
     };
 }
 
@@ -323,10 +345,15 @@ function loadRevealPlugin(relativePath,
                           slidesHtml,
                           { config = {}, popupBlocked = false, query = "" } = {}) {
     const scriptUrl = `http://localhost:8888/nbextensions/rise/${relativePath}${query}`;
+    const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(
         `<!DOCTYPE html><html><head><script src="${scriptUrl}"></script></head><body>
         <div class="reveal"><div class="slides">${slidesHtml}</div></div></body></html>`,
-        { url: "http://localhost:8888/notebooks/slides.ipynb", runScripts: "outside-only" },
+        {
+            url: "http://localhost:8888/notebooks/slides.ipynb",
+            runScripts: "outside-only",
+            virtualConsole: virtualConsole,
+        },
     );
     const window = dom.window;
     const popups = [];
@@ -383,7 +410,7 @@ function loadRevealPlugin(relativePath,
             const message = new window.MessageEvent("message", { data: JSON.stringify(data) });
             window.dispatchEvent(message);
         },
-        close: () => window.close(),
+        close: () => closePage(window),
     };
 }
 
