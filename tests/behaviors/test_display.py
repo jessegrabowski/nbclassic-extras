@@ -1,17 +1,37 @@
 import re
 
 from playwright.sync_api import expect
+import pytest
 from slideshow import CURRENT_SUBSLIDE, enter_slideshow, has_class, markdown
 
+THEMES = [
+    "black",
+    "white",
+    "league",
+    "sky",
+    "beige",
+    "simple",
+    "serif",
+    "blood",
+    "night",
+    "moon",
+    "solarized",
+]
+TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="
 
-def test_theme_option_loads_the_theme_stylesheet(nbclassic_server, page):
-    metadata = {"rise": {"theme": "sky"}}
+
+@pytest.mark.parametrize("theme", THEMES)
+def test_theme_option_loads_and_applies_the_theme_stylesheet(nbclassic_server, page, theme):
+    metadata = {"rise": {"theme": theme}}
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
     enter_slideshow(page)
 
-    expect(page.locator("body")).to_have_class(has_class("theme-sky"))
-    expect(page.locator("link#theme")).to_have_attribute("href", re.compile(r"theme/sky\.css$"))
-    expect(page.locator("body")).to_have_css("background-image", re.compile(r"radial-gradient"))
+    expect(page.locator("body")).to_have_class(has_class(f"theme-{theme}"))
+    stylesheet = page.locator("link#theme")
+    expect(stylesheet).to_have_attribute("href", re.compile(rf"theme/{theme}\.css$"))
+    # a stylesheet that failed to load has no readable rules
+    rule_count = "(link) => { try { return link.sheet.cssRules.length; } catch { return 0; } }"
+    assert stylesheet.evaluate(rule_count) > 0
 
 
 def test_transition_option_sets_the_reveal_transition(nbclassic_server, page):
@@ -54,14 +74,50 @@ def test_width_option_sizes_the_slides(nbclassic_server, page):
     expect(page.locator("#notebook-container.slides")).to_have_css("width", "800px")
 
 
-def test_header_and_footer_options_show_on_the_slide(nbclassic_server, page):
-    metadata = {"rise": {"header": "<b>Course title</b>", "footer": "<i>Page footer</i>"}}
+def test_header_footer_and_backimage_frame_the_slideshow(nbclassic_server, page):
+    metadata = {
+        "rise": {
+            "header": "<b>Course title</b>",
+            "footer": "<i>Page footer</i>",
+            "backimage": TRANSPARENT_PIXEL,
+        }
+    }
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
     enter_slideshow(page)
 
-    expect(page.locator("#rise-header")).to_have_text("Course title")
-    expect(page.locator("#rise-footer")).to_have_text("Page footer")
-    expect(page.locator("#rise-header")).to_be_visible()
+    header = page.locator("#rise-header")
+    footer = page.locator("#rise-footer")
+    backimage = page.locator("#rise-backimage")
+    expect(header).to_have_text("Course title")
+    expect(footer).to_have_text("Page footer")
+    expect(header).to_be_visible()
+    expect(footer).to_be_visible()
+
+    slideshow = page.locator("div.reveal").bounding_box()
+    assert header.bounding_box()["y"] == pytest.approx(slideshow["y"], abs=1)
+    footer_box = footer.bounding_box()
+    footer_bottom = footer_box["y"] + footer_box["height"]
+    assert footer_bottom == pytest.approx(slideshow["y"] + slideshow["height"], abs=1)
+    # RISE sizes the image to 100% of an overlay with no height, so only its width is fixed
+    assert backimage.bounding_box()["width"] == pytest.approx(slideshow["width"], abs=1)
+
+
+def test_overlay_option_replaces_the_header_and_footer(nbclassic_server, page):
+    metadata = {
+        "rise": {
+            "overlay": "<div class='banner'>Company name</div>",
+            "header": "<b>Course title</b>",
+            "footer": "<i>Page footer</i>",
+        }
+    }
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+
+    banner = page.locator("#rise-overlay .banner")
+    expect(banner).to_have_text("Company name")
+    expect(banner).to_be_visible()
+    expect(page.locator("#rise-header")).to_have_count(0)
+    expect(page.locator("#rise-footer")).to_have_count(0)
 
 
 def test_rise_css_and_notebook_css_are_applied_in_the_slideshow(nbclassic_server, page):
