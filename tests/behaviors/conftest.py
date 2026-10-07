@@ -67,11 +67,11 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def wait_until_up(port, timeout, log_path):
-    """Block until the server on ``port`` answers ``/api/status``, or raise with its log."""
+def wait_until_up(proc, port, timeout, log_path):
+    """Block until server ``proc`` answers ``/api/status`` on ``port``, or raise with its log."""
     deadline = time.time() + timeout
     url = f"http://localhost:{port}/api/status?token={TOKEN}"
-    while time.time() < deadline:
+    while time.time() < deadline and proc.poll() is None:
         try:
             with urllib.request.urlopen(url, timeout=1) as r:
                 if r.status == 200:
@@ -104,15 +104,27 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(scope="session")
-def nbclassic_server(tmp_path_factory):
+def nbclassic_server(tmp_path_factory, pytestconfig):
     """Run a real nbclassic server serving this repo's nbextensions and yield its handle."""
     port = free_port()
     notebook_dir = tmp_path_factory.mktemp("notebooks")
     config_dir, data_dir = jupyter_home_serving_the_repo(tmp_path_factory.mktemp("jupyter_home"))
-    log_path = tmp_path_factory.mktemp("logs") / "nbclassic.log"
+    log_path = pytestconfig.cache.mkdir("nbclassic") / "nbclassic.log"
+    # free_port's port can be taken before the server binds it; without retries the server then
+    # exits, where it would otherwise move to a port nothing here polls
+    command = [
+        sys.executable,
+        "-m",
+        "jupyter",
+        "nbclassic",
+        "--port",
+        str(port),
+        "--ServerApp.port_retries=0",
+        "--no-browser",
+    ]
     with log_path.open("w") as log:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "jupyter", "nbclassic", "--port", str(port), "--no-browser"],
+            command,
             cwd=notebook_dir,
             env={
                 **os.environ,
@@ -120,12 +132,13 @@ def nbclassic_server(tmp_path_factory):
                 "JUPYTER_CONFIG_DIR": str(config_dir),
                 "JUPYTER_DATA_DIR": str(data_dir),
                 "JUPYTER_PATH": str(data_dir),
+                "IPYTHONDIR": str(tmp_path_factory.mktemp("ipython")),
             },
             stdout=log,
             stderr=subprocess.STDOUT,
         )
         try:
-            wait_until_up(port, timeout=40, log_path=log_path)
+            wait_until_up(proc=proc, port=port, timeout=40, log_path=log_path)
             yield NbclassicServer(port=port, notebook_dir=notebook_dir)
         finally:
             proc.terminate()
@@ -147,5 +160,7 @@ def browser():
 def page(browser, nbclassic_server):
     page = browser.new_page()
     yield page
-    page.close()
-    nbclassic_server.shut_down_sessions()
+    try:
+        page.close()
+    finally:
+        nbclassic_server.shut_down_sessions()
