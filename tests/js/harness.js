@@ -290,4 +290,81 @@ async function loadRise({
     };
 }
 
-module.exports = { cell, loadRise };
+/**
+ * Load a reveal.js plugin script from static/rise into a fresh page with a fake Reveal.
+ *
+ * @param {string} relativePath - script path under static/rise.
+ * @param {string} slidesHtml - markup placed inside div.reveal > div.slides.
+ * @param {object} [options.config] - what Reveal.getConfig() returns.
+ * @param {boolean} [options.popupBlocked] - window.open returns null when true.
+ * @param {string} [options.query] - query string on the script's URL, as a cache-buster adds.
+ */
+function loadRevealPlugin(relativePath,
+                          slidesHtml,
+                          { config = {}, popupBlocked = false, query = "" } = {}) {
+    const scriptUrl = `http://localhost:8888/nbextensions/rise/${relativePath}${query}`;
+    const dom = new JSDOM(
+        `<!DOCTYPE html><html><head><script src="${scriptUrl}"></script></head><body>
+        <div class="reveal"><div class="slides">${slidesHtml}</div></div></body></html>`,
+        { url: "http://localhost:8888/notebooks/slides.ipynb", runScripts: "outside-only" },
+    );
+    const window = dom.window;
+    const popups = [];
+    const alerts = [];
+    const keyBindings = [];
+    const listeners = [];
+    let current = window.document.querySelector(".slides section section");
+    window.open = (url, name) => {
+        if (popupBlocked) {
+            return null;
+        }
+        const popup = { url: url, name: name, messages: [], closed: false, focused: 0 };
+        popup.postMessage = (message) => popup.messages.push(JSON.parse(message));
+        popup.focus = () => (popup.focused += 1);
+        popups.push(popup);
+        return popup;
+    };
+    window.alert = (message) => alerts.push(message);
+    // jsdom has no canvas: give plugins a 2D context whose drawing calls do nothing.
+    const noOpContext = new Proxy({}, { get: (target, name) => target[name] ?? (() => {}) });
+    window.HTMLCanvasElement.prototype.getContext = () => noOpContext;
+    const downloads = [];
+    window.URL.createObjectURL = (blob) => {
+        downloads.push(blob);
+        return "blob:download";
+    };
+    window.Reveal = {
+        registerPlugin() {},
+        getConfig: () => config,
+        getState: () => ({ indexh: 0, indexv: 0 }),
+        getCurrentSlide: () => current,
+        getRevealElement: () => window.document.querySelector(".reveal"),
+        addKeyBinding(binding, callback) {
+            keyBindings.push({ binding: binding, callback: callback });
+        },
+        addEventListener: (name, callback) => listeners.push({ name: name, callback: callback }),
+    };
+    window.eval(fs.readFileSync(path.join(REPO_ROOT, "static", "rise", relativePath), "utf8"));
+    return {
+        window: window,
+        popups: popups,
+        alerts: alerts,
+        keyBindings: keyBindings,
+        downloads: downloads,
+        // Make `selector` the current slide and fire reveal's event, as reveal does on navigation.
+        showSlide(selector, eventName = "slidechanged") {
+            current = window.document.querySelector(selector);
+            listeners
+                .filter((listener) => listener.name === eventName)
+                .forEach((listener) => listener.callback());
+        },
+        // Deliver a message as if the notes popup had posted it to this window.
+        receive(data) {
+            const message = new window.MessageEvent("message", { data: JSON.stringify(data) });
+            window.dispatchEvent(message);
+        },
+        close: () => window.close(),
+    };
+}
+
+module.exports = { cell, loadRise, loadRevealPlugin };
