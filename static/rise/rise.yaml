@@ -146,12 +146,6 @@ Parameters:
   description: <code>rise.shortcuts.edit-all-cells</code> shortcut to put all cells in edit mode
   input_type: hotkey
   default: none
-- name: rise.shortcuts.rise-nbconfigurator
-  description: >
-    <code>rise.shortcuts.rise-nbconfigurator</code> shortcut to open the nbconfigurator
-    pane for the RISE extension in a new tab (or window, depending on your browser config).
-  input_type: hotkey
-  default: shift-c
 # using reveal_shortcuts for the reveal.js and chalkboard short cuts instead of 
 # shortcuts to avoid treating these as normal jupyter shortcuts
 - name: rise.reveal_shortcuts.main.riseHelp

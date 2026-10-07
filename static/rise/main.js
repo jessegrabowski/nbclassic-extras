@@ -84,8 +84,6 @@ define([
         'toggle-slide': 'shift-i',
         'toggle-subslide': 'shift-b',
         'toggle-fragment': 'shift-g',
-        // this can be helpful
-        'rise-nbconfigurator': 'shift-c',
         // unassigned by default
         'toggle-notes': '',
         'toggle-skip': '',
@@ -1253,19 +1251,8 @@ define([
       "edit-all-cells", "RISE");
 
     // because the `Edit Keyboard Shortcuts` utility does not mention the
-    // actions prefix (i.e. 'RISE' in our case), we choose to make these two
-    // action names start with `rise-` even if it's a bit redundant.
-
-    // define an action that goes to the nbconfigurator page for rise
-    let nbconfigurator = function() {
-      let url = "/nbextensions/?nbextension=rise/main";
-      window.open(url, '_blank');
-    }
-
-    actions.register(
-      {help: 'open the nbconfigurator page for RISE',
-       handler: nbconfigurator},
-      "rise-nbconfigurator", "RISE");
+    // actions prefix (i.e. 'RISE' in our case), we choose to make this
+    // action name start with `rise-` even if it's a bit redundant.
 
     // mostly for debug / information
     actions.register(
