@@ -1,0 +1,9 @@
+{
+  "name": "nbclassic-extras-tests",
+  "private": true,
+  "description": "JS unit tests for the vendored nbextensions",
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^30.1.2"
+  }
+}

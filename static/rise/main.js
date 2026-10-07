@@ -14,7 +14,8 @@ define([
   'base/js/namespace',
   'base/js/utils',
   'services/config',
-], function(require, $, Jupyter, utils, configmod) {
+  'base/js/keyboard',
+], function(require, $, Jupyter, utils, configmod, keyboard) {
 
   "use strict";
 
@@ -133,11 +134,19 @@ define([
     let nbext_configurator = Jupyter.notebook.config;
     nbext_configurator.load();
 
-    // with Promise.all we can wait for all 3 configs to have loaded
+    // nbclassic loads nbextensions before the notebook itself, so the notebook metadata
+    // read below is empty until the notebook has finished loading; a notebook that fails to
+    // load never resolves this, and RISE then registers neither its actions nor its button
+    let notebook_loaded = Jupyter.notebook._fully_loaded
+        ? Promise.resolve()
+        : new Promise((resolve) => Jupyter.notebook.events.one('notebook_loaded.Notebook', resolve));
+
+    // with Promise.all we can wait for all 3 configs and the notebook to have loaded
     return Promise.all([
       config_section_legacy.loaded,
       config_section.loaded,
       nbext_configurator.loaded,
+      notebook_loaded,
     ]).then(
       // and now we can compute the layered config
       function() {
@@ -283,8 +292,10 @@ define([
       // Move the cell element into the slide <section>
       // N.B. jQuery append takes the element out of the DOM where it was
       if (slide_type === 'notes') {
-        // Notes are wrapped in an <aside> element
-        subslide_section.append(
+        // Notes are wrapped in an <aside> element. It goes in the current fragment, not
+        // directly in the subslide, so the DOM keeps notebook order: exiting re-appends
+        // cells in DOM order, and nbclassic derives its cell list from the DOM.
+        current_fragment.append(
           $('<aside>').addClass('notes').append(cell.element)
         );
       } else {
@@ -336,6 +347,9 @@ define([
     return selected_cell_slide;
   }
 
+  // a sync still pending at exit would size the notebook container as a slide again
+  let pending_sync = null;
+
   /* Set the #slide-x-y part of the URL to control where the slideshow will start.
    * N.B. We do this instead of using Reveal.slide() after reveal initialises,
    * because that leaves one slide clearly visible on screen for a moment before
@@ -360,7 +374,7 @@ define([
     // this patch makes the situation much better,
     // although it is clearly suboptimal to have 
     // to resort to that sort of dirty patch
-    setTimeout(()=>Reveal.sync(), complete_config.sync_timeout);
+    pending_sync = setTimeout(()=>Reveal.sync(), complete_config.sync_timeout);
   }
 
   /* Setup the scrolling in the current slide if the config option is activated
@@ -473,8 +487,33 @@ define([
     $('div#rise-overlay').remove();
   }
    
+  // listeners RISE adds to reveal, removed on exit so re-entering does not stack a second set
+  let reveal_listeners = [];
+
+  function addRevealListener(name, handler) {
+    Reveal.addEventListener(name, handler);
+    reveal_listeners.push([name, handler]);
+  }
+
+  function removeRevealListeners() {
+    for (let [name, handler] of reveal_listeners) {
+      Reveal.removeEventListener(name, handler);
+    }
+    reveal_listeners = [];
+  }
+
+  const RISE_BUTTONS = '#help_b,#exit_b,#toggle-chalkboard,#toggle-notes';
+
+  // the controls reveal creates directly inside its root element, div#notebook; notebook
+  // output can carry the same class names (a Bootstrap .progress bar, say)
+  function revealChrome() {
+    return $('div#notebook')
+      .children('.backgrounds, .progress, .controls, .slide-number, .speaker-notes, .pause-overlay')
+      .add('div#aria-status-div');
+  }
+
   function toggleAllRiseButtons() {
-    $('#help_b,#exit_b,#toggle-chalkboard,#toggle-notes').fadeToggle()
+    $(RISE_BUTTONS).fadeToggle()
   }
   
   function Revealer(selected_slide) {
@@ -621,6 +660,11 @@ define([
               }
 
               if (Reveal.initialized) {
+                // the previous exit hid these inline; reveal sets the display of the ones it
+                // manages again when configured, the others would stay hidden
+                revealChrome().css('display', '');
+                // chalkboard buttons outlive the slideshow, so start each entry from shown
+                $('#toggle-chalkboard, #toggle-notes').show();
                 //delete options["dependencies"];
                 Reveal.configure(options);
                 //console.log("Reveal is already initialized and is being configured");
@@ -630,24 +674,24 @@ define([
                 Reveal.initialized = true;
               }
 
-              Reveal.addEventListener('ready', function(event) {
+              addRevealListener('ready', function(event) {
                 Unselecter();
                 // check and set the scrolling slide when you start the whole thing
                 setScrollingSlide();
                 autoSelectHook();
               });
 
-              Reveal.addEventListener('slidechanged', function(event) {
+              addRevealListener('slidechanged', function(event) {
                 Unselecter();
                 // check and set the scrolling slide every time the slide change
                 setScrollingSlide();
                 autoSelectHook();
               });
 
-              Reveal.addEventListener('fragmentshown', function(event) {
+              addRevealListener('fragmentshown', function(event) {
                 autoSelectHook();
               });
-              Reveal.addEventListener('fragmenthidden', function(event) {
+              addRevealListener('fragmenthidden', function(event) {
                 autoSelectHook();
               });
 
@@ -660,7 +704,7 @@ define([
 
               if (! complete_config.show_buttons_on_startup) {
                 /* safer, and nicer too, to wait for reveal extensions to start */
-                setTimeout(toggleAllRiseButtons, 2000);
+                setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
               }
             });
   }
@@ -767,7 +811,7 @@ define([
         'toggleOverview': 'w',          // keycode 87
         //'toggleAllRiseButtons': 'm',  // keycode 188 (",") is not allowed in jupyter! using m instead
         'fullscreenHelp': 'f',          // keycode 70
-        'riseHelp': '?',                // keycode 63
+        'riseHelp': 'shift-/',          // what nbclassic calls the ? key
       },
       'chalkboard': {
         'clear': 'minus',               // keycode 189 (and 173 on firefox)
@@ -801,51 +845,80 @@ define([
   }
   
 
-  function setupKeys(mode){
-    
-    let key_str;
-    let reveal_bindings = updateRevealBindings(reveal_default_bindings);
-    
-    // Lets setup some specific keys for the reveal_mode
-    if (mode === 'reveal_mode') {
-      Jupyter.keyboard_manager.command_shortcuts.set_shortcut("shift-enter", "RISE:smart-exec");
-      Jupyter.keyboard_manager.edit_shortcuts.set_shortcut("shift-enter", "RISE:smart-exec");
-      // Save the f keyboard event for the Reveal fullscreen action
-      // see also #375
-      // reveal.js and chalkboard key bindings
-      // console.log(`complete_config in setupKeys: ${JSON.stringify(complete_config)}`);
-      
-      // add all reveal.js bindings to jupyter
-      for (const module of Object.keys(reveal_bindings)){
-        for (const action of Object.keys(reveal_bindings[module])){
-          key_str = reveal_bindings[module][action];
-          Jupyter.keyboard_manager.command_shortcuts.set_shortcut(key_str, `RISE:${action}`);
-          // console.log(`Setup jupyter keybinding: ${key_str}, RISE:${action}.`);
-        }
+  // [shortcut manager, key, previous action] for every binding the slideshow changed
+  let replaced_shortcuts = [];
+
+  // nbclassic's get_shortcut throws when a multi-key shortcut starts with an unbound key
+  function currentBinding(manager, key) {
+    let keys = key.split(',');
+    for (let length = 1; length < keys.length; length++) {
+      if (manager.get_shortcut(keys.slice(0, length).join(',')) === undefined) {
+        return undefined;
       }
-      try {
-        Jupyter.keyboard_manager.command_shortcuts.remove_shortcut("f");
-        Jupyter.keyboard_manager.command_shortcuts.set_shortcut("shift-f", "jupyter-notebook:find-and-replace");
-      } catch(error) {
-        console.log(`entering RISE : could not remove shortcut 'f' - ignored`);
-      }
-    } else if (mode === 'notebook_mode') {
-      Jupyter.keyboard_manager.command_shortcuts.set_shortcut("shift-enter", "jupyter-notebook:run-cell-and-select-next");
-      Jupyter.keyboard_manager.edit_shortcuts.set_shortcut("shift-enter", "jupyter-notebook:run-cell-and-select-next");
-      try {      
-        Jupyter.keyboard_manager.command_shortcuts.remove_shortcut("shift-f");
-        Jupyter.keyboard_manager.command_shortcuts.set_shortcut("f", "jupyter-notebook:find-and-replace");
-      } catch(error) {
-        console.log(`exiting RISE : could not remove shortcut 'shift-f' - ignored`);
+    }
+    return manager.get_shortcut(key);
+  }
+
+  // nbclassic stores and removes shortcuts in normalized form, and refuses a multi-key shortcut
+  // whose first key is already bound on its own; only bindings it accepted are undone on exit
+  function rebind(manager, key, action) {
+    key = keyboard.normalize_shortcut(key);
+    let previous = currentBinding(manager, key);
+    if (manager.set_shortcut(key, action)) {
+      replaced_shortcuts.push([manager, key, previous]);
+    }
+  }
+
+  function restoreShortcutTree(manager, prefix, tree) {
+    for (let [key, node] of Object.entries(tree)) {
+      if (typeof node === 'string') {
+        manager.set_shortcut(`${prefix},${key}`, node);
+      } else {
+        restoreShortcutTree(manager, `${prefix},${key}`, node);
       }
     }
   }
 
+  function setupKeys(mode){
+
+    let command_shortcuts = Jupyter.keyboard_manager.command_shortcuts;
+    let edit_shortcuts = Jupyter.keyboard_manager.edit_shortcuts;
+
+    if (mode === 'reveal_mode') {
+      let reveal_bindings = updateRevealBindings(reveal_default_bindings);
+      rebind(command_shortcuts, "shift-enter", "RISE:smart-exec");
+      rebind(edit_shortcuts, "shift-enter", "RISE:smart-exec");
+      // add all reveal.js and plugin bindings to jupyter
+      for (const module of Object.keys(reveal_bindings)){
+        for (const action of Object.keys(reveal_bindings[module])){
+          const key = reveal_bindings[module][action];
+          if (key) {
+            rebind(command_shortcuts, key, `RISE:${action}`);
+          }
+        }
+      }
+      // f opens the fullscreen help inside the slideshow, see also #375
+      rebind(command_shortcuts, "shift-f", "jupyter-notebook:find-and-replace");
+    } else if (mode === 'notebook_mode') {
+      // undo in reverse order, so a key changed twice ends with its original action
+      for (let [manager, key, previous] of replaced_shortcuts.reverse()) {
+        if (typeof previous === 'string') {
+          manager.set_shortcut(key, previous);
+        } else if (previous !== undefined) {
+          // key began multi-key shortcuts (like 'i' in 'i,i'), which the binding replaced
+          manager.remove_shortcut(key);
+          restoreShortcutTree(manager, key, previous);
+        } else if (currentBinding(manager, key) !== undefined) {
+          manager.remove_shortcut(key);
+        }
+      }
+      replaced_shortcuts = [];
+    }
+  }
+
   /*
-   * Creates a string of the valid shortcuts (i.e. the ones for which a key 
-   * code could be identified). If no key code could be identified the keys are
-   * still mapped to the default key code values (a string provided by
-   * the default_str argument will be used instead).
+   * Renders a shortcut (keys separated by commas) as <kbd> elements, or marks it
+   * unbound when it is empty.
    */
   function shortcutRepr(shortcuts){
     
@@ -863,7 +936,7 @@ define([
         }
       }
     } else {
-      key_str += "<kbd>" + default_str + "</kbd>";
+      key_str += "<em>unbound</em>";
     }
     return key_str;
   }
@@ -874,7 +947,6 @@ define([
    * 
    * Args:
    * shortcut_str = string representation of keyboard shortcut(s)
-   * default_str = default (fall back) string for key
    * help_str = help text to be shown for item
    */
   function helpListItem(shortcut_str, help_str){
@@ -930,7 +1002,7 @@ define([
           "<li><strong>with chalkboard enabled:</strong>" +
           "<ul>" +
           helpListItem(cb_keys.toggleChalkboard, cb_help.toggleChalkboard) +
-          helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvaas) +
+          helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvas) +
           helpListItem(cb_keys.colorNext, cb_help.colorNext) +
           helpListItem(cb_keys.colorPrev, cb_help.colorPrev) +
           helpListItem(cb_keys.download, cb_help.download) +
@@ -1000,7 +1072,9 @@ define([
 
   function Remover() {
     Reveal.configure({minScale: 1.0});
+    clearTimeout(pending_sync);
     Reveal.removeEventListeners();
+    removeRevealListeners();
     $('body').removeClass("rise-enabled");
     let theme = complete_config.theme;
     $('body').removeClass(`theme-${theme}`);
@@ -1019,18 +1093,12 @@ define([
     $('#rise-custom-css').remove();
     $('#rise-notebook-css').remove();
 
-    $('.backgrounds').hide();
-    $('.progress').hide();
-    $('.controls').hide();
-    $('.slide-number').hide();
-    $('.speaker-notes').hide();
-    $('.pause-overlay').hide();
-    $('div#aria-status-div').hide();
+    revealChrome().hide();
 
     let cells = Jupyter.notebook.get_cells();
-    for(let i in cells){
-      $('.cell:nth('+i+')').removeClass('reveal-skip');
-      $('div#notebook-container').append(cells[i].element);
+    for (let cell of cells) {
+      cell.element.removeClass('reveal-skip');
+      $('div#notebook-container').append(cell.element);
     }
 
     $('div#notebook-container').children('section').remove();
@@ -1100,8 +1168,10 @@ define([
      */
     let [slide, subslide, fragment] = reveal_current_position();
 
-    // start at slide -1 because we don't impose a starting 'slide'
-    let [slide_counter, subslide_counter, fragment_counter] = [-1, 0, 0];
+    // like markupSlides, slide, subslide and fragment cells only start something new once
+    // the first slide has visible content
+    let [slide_counter, subslide_counter, fragment_counter] = [0, 0, 0];
+    let content_seen = false;
     let result = null;
 
     let cells = notebook.get_cells();
@@ -1110,21 +1180,17 @@ define([
       // ignore skip cells no matter what
       if (is_skip(cell) || is_notes(cell))
         continue;
-      // a slide always increments, even at the start, since we begin at -1
-      if (is_slide(cell)) {
+      if (content_seen && is_slide(cell)) {
         slide_counter += 1;
         subslide_counter = 0;
       }
-      // if we see anything else then we're on a visible slide
-      // that has to be at least 0
-      slide_counter = Math.max(slide_counter, 0);
-      if (is_subslide(cell)) {
+      if (content_seen && is_subslide(cell)) {
         subslide_counter += 1;
       }
 
       if ((slide_counter == slide) && (subslide_counter == subslide)) {
         // keep count of fragments but only on current slide
-        if (is_fragment(cell)) {
+        if (content_seen && is_fragment(cell)) {
           fragment_counter += 1;
         }
         /* we're on the right slide
@@ -1139,6 +1205,7 @@ define([
 	  return index;
         }
       }
+      content_seen = true;
     }
     // for consistency with previous implementations
     return null;
@@ -1270,11 +1337,11 @@ define([
       buttonHelp();
       $('#maintoolbar').addClass('reveal_tagging');
     } else {
-      let current_cell_index =
-          // first use current selection if relevant
-          Jupyter.notebook.get_selected_index()
-      // resort to first cell in visible slide otherwise
-          || reveal_cell_index(Jupyter.notebook);
+      // first use current selection if relevant, the first cell in the visible slide otherwise
+      let current_cell_index = Jupyter.notebook.get_selected_index();
+      if (current_cell_index === null) {
+        current_cell_index = reveal_cell_index(Jupyter.notebook);
+      }
       Remover();
       setupKeys("notebook_mode");
       $('#exit_b').remove();
@@ -1307,7 +1374,7 @@ define([
       let current_cell_index = reveal_cell_index(
         Jupyter.notebook, cell_type, auto_select_fragment);
       // select and focus on current cell
-      if (current_cell_index)
+      if (current_cell_index !== null)
         Jupyter.notebook.select(current_cell_index);
     }, complete_config.auto_select_timeout);
   }

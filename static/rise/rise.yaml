@@ -168,7 +168,7 @@ Parameters:
     <code>rise.reveal_shortcuts.main.riseHelp</code>: shortcut for showing 
     help
   input_type: hotkey
-  default: "?"
+  default: shift-/
 #
 - name: rise.reveal_shortcuts.main.firstSlide
   description: >
@@ -205,14 +205,14 @@ Parameters:
     <code>rise.reveal_shortcuts.chalkboard.reset</code>: shortcut (in chalkboard mode) for resetting 
     chalkboard data on current slide
   input_type: hotkey
-  default: minus
+  default: "="
 #
 - name: rise.reveal_shortcuts.chalkboard.clear
   description: >
     <code>rise.reveal_shortcuts.chalkboard.clear</code>: shortcut (in chalkboard mode) for clearing 
     full size chalkboard
   input_type: hotkey
-  default: "="
+  default: minus
 #
 - name: rise.reveal_shortcuts.chalkboard.toggleChalkboard
   description: >
@@ -234,6 +234,27 @@ Parameters:
     downloading recorded chalkboard drawing
   input_type: hotkey
   default: \
+#
+- name: rise.reveal_shortcuts.chalkboard.colorNext
+  description: >
+    <code>rise.reveal_shortcuts.chalkboard.colorNext</code>: shortcut (in chalkboard mode) for
+    switching to the next pen color
+  input_type: hotkey
+  default: s
+#
+- name: rise.reveal_shortcuts.chalkboard.colorPrev
+  description: >
+    <code>rise.reveal_shortcuts.chalkboard.colorPrev</code>: shortcut (in chalkboard mode) for
+    switching to the previous pen color
+  input_type: hotkey
+  default: q
+#
+- name: rise.reveal_shortcuts.notes.openNotes
+  description: >
+    <code>rise.reveal_shortcuts.notes.openNotes</code>: shortcut for opening the speaker
+    notes view
+  input_type: hotkey
+  default: t
 
 #
 # passed to reveal as-is
@@ -294,7 +315,7 @@ Parameters:
   description: >
     <code>history</code>: Push each slide change to the browser history
   input_type: checkbox
-  default : true,
+  default: true
 #
 - name: rise.scroll
   description: >
@@ -340,7 +361,7 @@ Parameters:
   input_type: number
   default: 500
 #
-- name: rise.aync_timeout
+- name: rise.sync_timeout
   description: >
     timeout in milliseconds before an extra call to Reveal.sync() is
     made to ensure proper display in some problematic conditions;

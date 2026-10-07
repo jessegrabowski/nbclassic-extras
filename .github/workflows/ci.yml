@@ -20,3 +20,63 @@ jobs:
           pixi-version: v0.79.0
           run-install: false
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+
+  tests:
+    name: Tests
+    needs: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # needed for hatch-vcs
+
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: v0.79.0
+          cache: true
+
+      - name: Cache playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+
+      - name: Install playwright browsers
+        # --with-deps pulls the OS libraries Chromium needs on a bare ubuntu runner.
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pixi run -- playwright install --with-deps chromium
+
+      - name: Install the OS libraries for the cached browsers
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pixi run -- playwright install-deps chromium
+
+      - name: Run tests
+        run: pixi run test -vv --durations=20
+
+      - name: Upload the nbclassic log
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nbclassic-log
+          path: .pytest_cache/d/nbclassic
+          include-hidden-files: true
+
+  js-tests:
+    name: JS tests
+    needs: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # needed for hatch-vcs
+
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: v0.79.0
+          cache: true
+
+      - name: Run JS tests
+        run: pixi run js-test
