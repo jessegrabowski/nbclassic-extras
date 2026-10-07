@@ -135,7 +135,8 @@ define([
     nbext_configurator.load();
 
     // nbclassic loads nbextensions before the notebook itself, so the notebook metadata
-    // read below is empty until the notebook has finished loading
+    // read below is empty until the notebook has finished loading; a notebook that fails to
+    // load never resolves this, and RISE then registers neither its actions nor its button
     let notebook_loaded = Jupyter.notebook._fully_loaded
         ? Promise.resolve()
         : new Promise((resolve) => Jupyter.notebook.events.one('notebook_loaded.Notebook', resolve));
