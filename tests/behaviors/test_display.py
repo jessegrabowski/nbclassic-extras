@@ -1,11 +1,7 @@
 import re
 
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, enter_slideshow, markdown
-
-
-def has_class(name):
-    return re.compile(rf"(^|\s){re.escape(name)}(\s|$)")
+from slideshow import CURRENT_SUBSLIDE, enter_slideshow, has_class, markdown
 
 
 def test_theme_option_loads_the_theme_stylesheet(nbclassic_server, page):

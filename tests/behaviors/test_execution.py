@@ -1,10 +1,6 @@
 from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, enter_slideshow, exit_slideshow, markdown
-
-
-def code(source, slide_type=""):
-    return new_code_cell(source, metadata={"slideshow": {"slide_type": slide_type}})
+from slideshow import CURRENT_SUBSLIDE, code, enter_slideshow, exit_slideshow, markdown
 
 
 def selected_cell_text(page):

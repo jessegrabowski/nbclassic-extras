@@ -1,11 +1,11 @@
 import re
 
 from playwright.sync_api import expect
-from slideshow import CURRENT_SUBSLIDE, enter_slideshow, exit_slideshow, markdown
+from slideshow import CURRENT_SUBSLIDE, enter_slideshow, exit_slideshow, has_class, markdown
 
-VISIBLE = re.compile(r"(^|\s)visible(\s|$)")
-OVERVIEW = re.compile(r"(^|\s)overview(\s|$)")
-PAUSED = re.compile(r"(^|\s)paused(\s|$)")
+VISIBLE = has_class("visible")
+OVERVIEW = has_class("overview")
+PAUSED = has_class("paused")
 
 
 def test_navigation_visits_slides_subslides_and_fragments_in_order(nbclassic_server, page):
