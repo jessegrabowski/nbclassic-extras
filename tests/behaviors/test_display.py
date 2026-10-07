@@ -63,22 +63,23 @@ def test_header_footer_and_backimage_frame_the_slideshow(nbclassic_server, page)
 
     header = page.locator("#rise-header")
     footer = page.locator("#rise-footer")
+    backimage = page.locator("#rise-backimage")
     expect(header).to_have_text("Course title")
     expect(footer).to_have_text("Page footer")
     expect(header).to_be_visible()
     expect(footer).to_be_visible()
+    expect(backimage).to_be_visible()
+    expect(backimage).to_have_attribute("src", TRANSPARENT_PIXEL)
 
     # one layout snapshot: nbclassic resizes the notebook after RISE hides its header
     boxes = page.evaluate(
-        "() => Object.fromEntries(['div.reveal', '#rise-header', '#rise-footer', '#rise-backimage']"
+        "() => Object.fromEntries(['div.reveal', '#rise-header', '#rise-footer']"
         ".map((selector) => [selector, document.querySelector(selector).getBoundingClientRect()"
         ".toJSON()]))"
     )
     slideshow = boxes["div.reveal"]
     assert boxes["#rise-header"]["top"] == pytest.approx(slideshow["top"], abs=1)
     assert boxes["#rise-footer"]["bottom"] == pytest.approx(slideshow["bottom"], abs=1)
-    # RISE sizes the image to 100% of an overlay with no height, so only its width is fixed
-    assert boxes["#rise-backimage"]["width"] == pytest.approx(slideshow["width"], abs=1)
 
 
 def test_rise_css_and_notebook_css_are_applied_in_the_slideshow(nbclassic_server, page):
