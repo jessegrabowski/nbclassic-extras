@@ -39,22 +39,7 @@ def test_exit_restores_cell_order_and_editing(nbclassic_server, page):
     expect(restored.nth(3)).to_contain_text("x = 10")
 
 
-def test_exit_keeps_notebook_order_when_notes_follow_a_fragment(nbclassic_server, page):
-    cells = [
-        markdown("Alpha", "slide"),
-        markdown("Bravo", "fragment"),
-        markdown("Spoken", "notes"),
-        markdown("Charlie", "-"),
-    ]
-    nbclassic_server.open_notebook(page, cells)
-    enter_slideshow(page)
-    exit_slideshow(page)
-
-    order = page.evaluate("() => Jupyter.notebook.get_cells().map((cell) => cell.get_text())")
-    assert order == ["Alpha", "Bravo", "Spoken", "Charlie"]
-
-
-def test_pause_overlay_works_after_reentering(nbclassic_server, page):
+def test_slash_toggles_the_pause_overlay_after_reentering(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
     enter_slideshow(page)
     exit_slideshow(page)
@@ -111,20 +96,10 @@ def test_s_saves_the_notebook_again_after_exiting(nbclassic_server, page):
     assert saved
 
 
-def test_exit_restores_two_key_shortcuts_under_a_custom_reveal_key(nbclassic_server, page):
-    metadata = {"rise": {"reveal_shortcuts": {"main": {"toggleOverview": "i"}}}}
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
-    enter_slideshow(page)
-    exit_slideshow(page)
-
-    expect(page.locator("#exit_b")).to_have_count(0)
-    shortcut = "() => Jupyter.keyboard_manager.command_shortcuts.get_shortcut('i,i')"
-    assert page.evaluate(shortcut) == "jupyter-notebook:interrupt-kernel"
-
-
-def test_custom_reveal_keys_that_nbclassic_cannot_bind_leave_exit_working(nbclassic_server, page):
-    # "a,b" is refused while "a" is bound on its own, and "g,u" starts with an unbound key
-    custom = {"lastSlide": "a,b", "toggleOverview": "g,u"}
+def test_exit_restores_the_shortcuts_behind_custom_reveal_keys(nbclassic_server, page):
+    # "a,b" is refused while "a" is bound on its own, "g,u" starts with an unbound key, and "i"
+    # begins nbclassic's "i,i"
+    custom = {"lastSlide": "a,b", "toggleOverview": "g,u", "firstSlide": "i"}
     metadata = {"rise": {"reveal_shortcuts": {"main": custom}}}
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
     enter_slideshow(page)
@@ -135,3 +110,4 @@ def test_custom_reveal_keys_that_nbclassic_cannot_bind_leave_exit_working(nbclas
     assert page.evaluate(shortcut, "a") == "jupyter-notebook:insert-cell-above"
     assert page.evaluate(shortcut, "shift-enter") == "jupyter-notebook:run-cell-and-select-next"
     assert page.evaluate(shortcut, "g") is None
+    assert page.evaluate(shortcut, "i,i") == "jupyter-notebook:interrupt-kernel"

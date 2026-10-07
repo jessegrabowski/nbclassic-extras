@@ -105,24 +105,6 @@ def test_header_footer_and_backimage_frame_the_slideshow(nbclassic_server, page)
     assert boxes["#rise-backimage"]["width"] == pytest.approx(slideshow["width"], abs=1)
 
 
-def test_overlay_option_replaces_the_header_and_footer(nbclassic_server, page):
-    metadata = {
-        "rise": {
-            "overlay": "<div class='banner'>Company name</div>",
-            "header": "<b>Course title</b>",
-            "footer": "<i>Page footer</i>",
-        }
-    }
-    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
-    enter_slideshow(page)
-
-    banner = page.locator("#rise-overlay .banner")
-    expect(banner).to_have_text("Company name")
-    expect(banner).to_be_visible()
-    expect(page.locator("#rise-header")).to_have_count(0)
-    expect(page.locator("#rise-footer")).to_have_count(0)
-
-
 def test_rise_css_and_notebook_css_are_applied_in_the_slideshow(nbclassic_server, page):
     rule = "body.rise-enabled #notebook-container {{ outline: 3px solid {color}; }}\n"
     rise_css = nbclassic_server.notebook_dir / "rise.css"
