@@ -2,6 +2,9 @@ from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
 from slideshow import CURRENT_SUBSLIDE, code, enter_slideshow, exit_slideshow, markdown
 
+# Short enough that waiting a second leaves no doubt the auto-select hook has run.
+AUTO_SELECT_TIMEOUT = 100
+
 
 def selected_cell_text(page):
     return page.locator(".cell.selected .input_area")
@@ -108,11 +111,13 @@ def test_auto_select_first_selects_the_first_cell_of_any_type(nbclassic_server, 
 
 def test_auto_select_none_leaves_no_cell_selected(nbclassic_server, page):
     cells = [markdown("Alpha", "slide"), code("x = 1"), markdown("Bravo", "slide"), code("y = 2")]
-    nbclassic_server.open_notebook(page, cells, metadata={"rise": {"auto_select": "none"}})
+    metadata = {"rise": {"auto_select": "none", "auto_select_timeout": AUTO_SELECT_TIMEOUT}}
+    nbclassic_server.open_notebook(page, cells, metadata=metadata)
     enter_slideshow(page)
 
     page.keyboard.press("Space")
-    page.wait_for_timeout(1000)
+    expect(page.locator(CURRENT_SUBSLIDE)).to_contain_text("Bravo")
+    page.wait_for_timeout(10 * AUTO_SELECT_TIMEOUT)
 
     expect(page.locator(".cell.selected")).to_have_count(0)
 
@@ -129,12 +134,13 @@ def test_auto_select_fragment_selects_the_code_cell_of_the_shown_fragment(nbclas
 
 def test_auto_select_fragment_off_keeps_the_first_code_cell_of_the_slide(nbclassic_server, page):
     cells = [code("x = 1", "slide"), code("y = 2", "fragment")]
-    metadata = {"rise": {"auto_select_fragment": False}}
+    metadata = {"rise": {"auto_select_fragment": False, "auto_select_timeout": AUTO_SELECT_TIMEOUT}}
     nbclassic_server.open_notebook(page, cells, metadata=metadata)
     enter_slideshow(page)
 
     page.keyboard.press("Space")
-    page.wait_for_timeout(1000)
+    expect(page.locator(".fragment.visible")).to_contain_text("y = 2")
+    page.wait_for_timeout(10 * AUTO_SELECT_TIMEOUT)
 
     expect(selected_cell_text(page)).to_contain_text("x = 1")
 

@@ -73,6 +73,9 @@ def test_reentering_keeps_every_rise_button_hidden_when_startup_hides_them(nbcla
     page.keyboard.press("Alt+r")
     expect(page.locator("body")).not_to_have_class(RISE_ENABLED)
     enter_slideshow(page)
+    expect(page.locator("#exit_b")).to_have_count(1)
+    expect(page.locator("#toggle-chalkboard")).to_have_count(1)
+    # the buttons fade out 2 s after entering, in 0.4 s
     page.wait_for_timeout(3000)
 
     expect(page.locator("#exit_b")).to_be_hidden()

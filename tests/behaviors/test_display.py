@@ -95,9 +95,12 @@ def test_tall_subslide_does_not_scroll_by_default(nbclassic_server, page):
     tall = "\n\n".join(f"Line {number}" for number in range(80))
     nbclassic_server.open_notebook(page, [markdown(tall, "slide")])
     enter_slideshow(page)
-    page.wait_for_timeout(500)
+    subslide = page.locator(CURRENT_SUBSLIDE)
 
-    expect(page.locator(CURRENT_SUBSLIDE)).not_to_have_css("overflow-y", "scroll")
+    # as tall as RISE's scroll option requires; RISE decides on reveal's ready, which has fired
+    overflows = "(element) => element.offsetHeight > element.closest('.reveal').offsetHeight * 0.95"
+    assert subslide.evaluate(overflows)
+    expect(subslide).not_to_have_css("overflow-y", "scroll")
 
 
 def test_show_buttons_on_startup_false_hides_the_rise_buttons(nbclassic_server, page):
@@ -105,6 +108,8 @@ def test_show_buttons_on_startup_false_hides_the_rise_buttons(nbclassic_server, 
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
     enter_slideshow(page)
 
+    expect(page.locator("#exit_b")).to_have_count(1)
+    expect(page.locator("#help_b")).to_have_count(1)
     expect(page.locator("#exit_b")).to_be_hidden(timeout=5000)
     expect(page.locator("#help_b")).to_be_hidden()
 
