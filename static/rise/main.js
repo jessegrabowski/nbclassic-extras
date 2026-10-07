@@ -111,7 +111,6 @@ define([
 
       // plugins
       enable_chalkboard: false,
-      enable_leap_motion: false,
     };
 
     // honour the 2 names: 'livereveal' and 'rise'
@@ -597,14 +596,6 @@ define([
                 options[setting] = complete_config[setting];
               }
 
-              ////////// set up the leap motion integration if configured
-              let enable_leap_motion = complete_config.enable_leap_motion;
-              if (enable_leap_motion) {
-                options.dependencies.push({ src: require.toUrl('./reveal.js/plugin/leap/leap.js'),
-                                            async: true });
-                options.leap = enable_leap_motion;
-              }
-              
               //$.extend(options.keyboard, reveal_bindings);
 	      
               ////////// set up chalkboard if configured

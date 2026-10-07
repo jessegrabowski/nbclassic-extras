@@ -31,12 +31,6 @@ Parameters:
   input_type: checkbox
   default: false
 #
-- name: rise.enable_leap_motion
-  description: >
-    <code>enable_leap_motion</code>: to use the leap motion device. xxx this needs more details.
-  input_type: checkbox
-  default: false
-#
 # xxx: could be useful to add more policies
 # like allowing to start on a hard-wired slide number
 #
