@@ -25,6 +25,14 @@ def test_comma_hides_and_shows_the_rise_buttons(nbclassic_server, page):
     expect(page.locator("#help_b")).to_be_visible()
 
 
+def test_question_mark_opens_the_shortcut_help(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
+    enter_slideshow(page)
+
+    page.keyboard.press("Shift+/")
+
+    expect(page.locator(".modal-title")).to_have_text("Reveal Shortcuts Help")
+
 
 def test_f_opens_the_fullscreen_help(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])

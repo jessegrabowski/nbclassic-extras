@@ -168,7 +168,7 @@ Parameters:
     <code>rise.reveal_shortcuts.main.riseHelp</code>: shortcut for showing 
     help
   input_type: hotkey
-  default: "?"
+  default: shift-/
 #
 - name: rise.reveal_shortcuts.main.firstSlide
   description: >

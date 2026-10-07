@@ -802,7 +802,7 @@ define([
         'toggleOverview': 'w',          // keycode 87
         //'toggleAllRiseButtons': 'm',  // keycode 188 (",") is not allowed in jupyter! using m instead
         'fullscreenHelp': 'f',          // keycode 70
-        'riseHelp': '?',                // keycode 63
+        'riseHelp': 'shift-/',          // what nbclassic calls the ? key
       },
       'chalkboard': {
         'clear': 'minus',               // keycode 189 (and 173 on firefox)
