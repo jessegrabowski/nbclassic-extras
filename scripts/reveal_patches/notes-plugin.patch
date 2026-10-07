@@ -1,0 +1,33 @@
+--- a/reveal.js/plugin/notes/notes.js
++++ b/reveal.js/plugin/notes/notes.js
+@@ -21,7 +21,7 @@
+         }
+ 
+ 		if( !notesFilePath ) {
+-			var jsFileLocation = document.querySelector('script[src$="notes.js"]').src;  // this js file path
++			var jsFileLocation = document.querySelector('script[src*="notes.js"]').src;  // this js file path
+ 			jsFileLocation = jsFileLocation.replace(/notes\.js(\?.*)?$/, '');   // the js folder path
+ 			notesFilePath = jsFileLocation + 'notes.html';
+ 		}
+@@ -162,7 +162,7 @@
+ 				}
+ 
+ 				// Open the notes when the 's' key is hit
+-				Reveal.addKeyBinding({keyCode: 83, key: 'S', description: 'Speaker notes view'}, function() {
++				Reveal.addKeyBinding({keyCode: 84, key: 'T', description: 'Speaker notes view'}, function() {
+ 					openNotes();
+ 				} );
+ 
+--- a/reveal.js/plugin/notes/notes.html
++++ b/reveal.js/plugin/notes/notes.html
+@@ -177,6 +177,10 @@
+ 					font-size: 1.2em;
+ 				}
+ 
++#speaker-controls>.speaker-controls-notes .inner_cell>.ctb_hideshow, 
++#speaker-controls>.speaker-controls-notes .inner_cell>.input_area { 
++display: none; 
++}
+ 			/* Layout selector */
+ 			#speaker-layout {
+ 				position: absolute;

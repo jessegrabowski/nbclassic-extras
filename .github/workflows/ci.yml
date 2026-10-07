@@ -80,3 +80,9 @@ jobs:
 
       - name: Run JS tests
         run: pixi run js-test
+
+      - name: Check that the vendoring script reproduces the reveal tree
+        run: |
+          pixi run vendor-reveal
+          git status --short -- static/rise
+          test -z "$(git status --porcelain -- static/rise)"

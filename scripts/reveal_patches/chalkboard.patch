@@ -1,0 +1,45 @@
+--- a/reveal.js-chalkboard/chalkboard.js
++++ b/reveal.js-chalkboard/chalkboard.js
+@@ -83,7 +83,7 @@
+ 	function configure( config ) {
+ 		if ( config.boardmarkerWidth || config.penWidth ) boardmarkerWidth = config.boardmarkerWidth || config.penWidth;
+ 		if ( config.chalkWidth ) chalkWidth = config.chalkWidth;
+-		if ( "chalkEffect" in config ) chalkEffect = ("chalkEffect" in config);
++		if ( "chalkEffect" in config ) chalkEffect = config.chalkEffect;
+ 		if ( config.rememberColor ) rememberColor = config.rememberColor;
+ 		if ( config.eraser ) eraser = config.eraser;
+ 		if ("boardmarkers" in config) boardmarkers = config.boardmarkers;
+@@ -152,7 +152,7 @@
+ 		button.style.top = toggleChalkboardButton.top ||  "auto";
+ 		button.style.right = toggleChalkboardButton.right ||  "auto";
+ 
+-		button.innerHTML = '<a href="#" onclick="RevealChalkboard.toggleChalkboard(); return false;"><i class="fa fa-pen-square"></i></a>'
++		button.innerHTML = '<a href="#" onclick="RevealChalkboard.toggleChalkboard(); return false;"><i class="fa fa-pencil-square"></i></a>'
+ 		document.querySelector(".reveal").appendChild( button );
+ 	}
+ 	if ( toggleNotesButton ) {
+@@ -169,7 +169,7 @@
+ 		button.style.top = toggleNotesButton.top ||  "auto";
+ 		button.style.right = toggleNotesButton.right ||  "auto";
+ 
+-		button.innerHTML = '<a href="#" onclick="RevealChalkboard.toggleNotesCanvas(); return false;"><i class="fa fa-pen"></i></a>'
++		button.innerHTML = '<a href="#" onclick="RevealChalkboard.toggleNotesCanvas(); return false;"><i class="fa fa-pencil"></i></a>'
+ 		document.querySelector(".reveal").appendChild( button );
+ 	}
+ //alert("Buttons");
+@@ -259,10 +259,11 @@
+ ** Storage
+ ******************************************************************/
+ 
+-	var storage = [
+-		{ width: Reveal.getConfig().width, height: Reveal.getConfig().height, data: []},
+-		{ width: Reveal.getConfig().width, height: Reveal.getConfig().height, data: []}
+-	];
++        var storage = [
++                        { width: drawingCanvas[0].width - 2 * drawingCanvas[0].xOffset, height: drawingCanvas[0].height - 2 * drawingCanvas[0].yOffset, data: []},
++                        { width: drawingCanvas[1].width, height: drawingCanvas[1].height, data: []}
++                ];
++
+ //console.log( JSON.stringify(storage));
+ 
+ 	var loaded = null;
