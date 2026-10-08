@@ -311,8 +311,11 @@ define([
     return selected_cell_slide;
   }
 
-  // a sync still pending at exit would size the notebook container as a slide again
+  // timers still pending at exit would act on the notebook: size its container as a slide,
+  // select a cell from the slide just left, or hide the buttons of the next entry
   let pending_sync = null;
+  let pending_auto_select = null;
+  let pending_buttons_fade = null;
 
   /* Set the #slide-x-y part of the URL to control where the slideshow will start.
    * N.B. We do this instead of using Reveal.slide() after reveal initialises,
@@ -678,7 +681,7 @@ define([
 
       if (! complete_config.show_buttons_on_startup) {
         /* safer, and nicer too, to wait for reveal extensions to start */
-        setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
+        pending_buttons_fade = setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
       }
     });
   }
@@ -1025,6 +1028,8 @@ define([
       deck_initialized = false;
     }
     clearTimeout(pending_sync);
+    clearTimeout(pending_auto_select);
+    clearTimeout(pending_buttons_fade);
     removeRevealListeners();
     $('body').removeClass("rise-enabled");
     let theme = complete_config.theme;
@@ -1297,7 +1302,9 @@ define([
     }
 
     let auto_select_fragment = complete_config.auto_select_fragment;
-    setTimeout(function(){
+    // ready and the starting slide's slidechanged both ask; the later request wins
+    clearTimeout(pending_auto_select);
+    pending_auto_select = setTimeout(function(){
       let current_cell_index = reveal_cell_index(
         Jupyter.notebook, cell_type, auto_select_fragment);
       // select and focus on current cell

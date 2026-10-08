@@ -501,6 +501,42 @@ test("re-entering on the slide shown at exit selects its code cell again", async
     assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
 });
 
+test("exiting before a pending auto-select keeps the cell exit selected", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide"), cell("x = 1", "", "code")],
+        metadata: { rise: { auto_select_timeout: 50 } },
+    });
+    t.after(rise.close);
+    rise.run("RISE:slideshow");
+    // reveal's ready, which asks for the auto-select
+    await rise.idle(0);
+
+    rise.cells[0].select();
+    rise.run("RISE:slideshow");
+    await rise.idle(60);
+
+    assert.deepEqual(rise.cells.map((c) => c.selected), [true, false]);
+});
+
+test("a button fade pending at exit leaves the buttons of the next entry shown", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { show_buttons_on_startup: false } },
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+    $.fx.off = true;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
+    rise.run("RISE:slideshow");
+    t.mock.timers.tick(1000);
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+    t.mock.timers.tick(1000);
+
+    assert.equal($("#help_b, #exit_b").filter((i, e) => $(e).css("display") !== "none").length, 2);
+});
+
 test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],
