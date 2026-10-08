@@ -189,7 +189,7 @@ test("exiting keeps notebook order when a notes cell follows a fragment", async 
         t.after(rise.close);
 
         rise.run("RISE:slideshow");
-        await rise.idle(20);
+        await rise.until(() => rise.cells[1].selected);
 
         assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
     });
@@ -573,13 +573,13 @@ test("re-entering on the slide shown at exit selects its code cell again", async
     });
     t.after(rise.close);
     rise.run("RISE:slideshow");
-    await rise.idle(10);
+    await rise.until(() => rise.cells[1].selected);
     rise.run("RISE:slideshow");
     rise.cells[1].unselect();
     rise.cells[0].select();
 
     rise.run("RISE:slideshow");
-    await rise.idle(10);
+    await rise.until(() => rise.cells[1].selected);
 
     assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
 });

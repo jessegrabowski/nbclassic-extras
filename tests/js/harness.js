@@ -385,6 +385,16 @@ async function loadRise({
             notebook.events.trigger("notebook_loaded.Notebook");
         },
         idle: (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
+        // waits for RISE's timers to make `condition` true, however slowly they run
+        async until(condition, timeout = 2000) {
+            const deadline = Date.now() + timeout;
+            while (!condition()) {
+                if (Date.now() > deadline) {
+                    throw new Error(`timed out waiting for ${condition}`);
+                }
+                await new Promise((resolve) => window.setTimeout(resolve, 5));
+            }
+        },
         close: () => closePage(window),
     };
 }
