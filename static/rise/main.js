@@ -554,6 +554,15 @@ define([
         stylesheet(require.toUrl('./reveal.js-chalkboard/style.css'), 'chalkboardcss'));
     }
 
+    // a slideshow that cannot load or start reveal returns to the notebook instead of staying
+    // half set up
+    let startFailed = function(error) {
+      console.error("RISE: could not start the slideshow", error);
+      if (entry === current_entry) {
+        revealMode();
+      }
+    };
+
     require(modules.map(require.toUrl), function(reveal, RevealNotes) {
       Reveal = reveal;
       // the slideshow may have been exited while reveal was loading
@@ -658,13 +667,13 @@ define([
         if (enable_chalkboard) {
           addChalkboardButtons();
         }
-      });
+      }).catch(startFailed);
 
       if (! complete_config.show_buttons_on_startup) {
         /* safer, and nicer too, to wait for reveal extensions to start */
         pending_buttons_fade = setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
       }
-    });
+    }, startFailed);
   }
 
   function Unselecter(){
@@ -758,12 +767,14 @@ define([
         bindings[module][action] = REVEAL_ACTIONS[module][action].key;
       }
     }
-    let custom_shortcuts = complete_config.reveal_shortcuts;
-    if (custom_shortcuts) {
-      for (const module of Object.keys(custom_shortcuts)){
-        for (const action of Object.keys(custom_shortcuts[module])){
-           bindings[module][action] = custom_shortcuts[module][action];
+    let custom_shortcuts = complete_config.reveal_shortcuts || {};
+    for (const module of Object.keys(custom_shortcuts)) {
+      for (const action of Object.keys(custom_shortcuts[module])) {
+        if (bindings[module] === undefined || bindings[module][action] === undefined) {
+          console.warn(`RISE: ignoring reveal_shortcuts.${module}.${action}, an unknown action`);
+          continue;
         }
+        bindings[module][action] = custom_shortcuts[module][action];
       }
     }
     return bindings;
@@ -1336,7 +1347,7 @@ define([
       .then(registerJupyterActions)
       .then(addButtonsAndShortcuts)
       .then(enterSlideshowInSpeakerView)
-    ;
+      .catch((error) => console.error("RISE: setup failed", error));
 
   }
 

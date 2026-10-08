@@ -257,6 +257,8 @@ function makeReveal(window) {
  *     nbclassic does while the notebook JSON is still loading, until finishNotebookLoad().
  * @param {boolean} [options.revealLoaded] - false holds back reveal.js, as RequireJS does while
  *     it downloads, until finishRevealLoad().
+ * @param {boolean} [options.revealLoadFails] - true fails every reveal.js load, as RequireJS
+ *     does when a script cannot be fetched.
  * @param {string} [options.notebookName] - the notebook's file name.
  */
 async function loadRise({
@@ -266,6 +268,7 @@ async function loadRise({
     notebookConfig = {},
     notebookLoaded = true,
     revealLoaded = true,
+    revealLoadFails = false,
     notebookName = "slides.ipynb",
 }) {
     const { virtualConsole, closePage } = strictConsole();
@@ -314,8 +317,10 @@ async function loadRise({
     const utils = { get_body_data: () => "" };
     const reveal = makeReveal(window);
     const pendingLoads = [];
-    const fakeRequire = (deps, callback) => {
-        if (revealLoaded) {
+    const fakeRequire = (deps, callback, errback) => {
+        if (revealLoadFails) {
+            window.setTimeout(() => errback(new Error("script error")), 0);
+        } else if (revealLoaded) {
             callback(reveal);
         } else {
             pendingLoads.push(() => callback(reveal));

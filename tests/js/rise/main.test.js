@@ -552,6 +552,37 @@ test("a button fade pending at exit leaves the buttons of the next entry shown",
     assert.equal($("#help_b, #exit_b").filter((i, e) => $(e).css("display") !== "none").length, 2);
 });
 
+test("a reveal.js that fails to load returns to the notebook", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], revealLoadFails: true });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+    await rise.idle(0);
+
+    assert.ok(!$("body").hasClass("rise-enabled"));
+    assert.equal($("#notebook-container section").length, 0);
+    assert.equal(rise.shortcutMap("command").w, undefined);
+});
+
+test("unknown reveal_shortcuts entries are skipped and the known ones still apply", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: {
+            rise: { reveal_shortcuts: { main: { tooglOverview: "x", toggleOverview: "shift-o" },
+                                        laser: { point: "l" } } },
+        },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+
+    const command = rise.shortcutMap("command");
+    assert.equal(command["shift-o"], "RISE:toggleOverview");
+    assert.equal(command.x, undefined);
+    assert.equal(command.l, undefined);
+});
+
 test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],
