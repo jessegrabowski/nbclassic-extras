@@ -136,14 +136,14 @@ function makeCells($, specs) {
             render() { this.rendered = true; },
             unrender() { this.rendered = false; },
             ensure_focused() {},
+            code_mirror: { refresh() {} },
         };
         element.data("cell", cell);
         return cell;
     });
 }
 
-// Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements, which
-// RISE overrides on the prototype. A class per page keeps that override from leaking across tests.
+// Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements.
 function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded, name) {
     class FakeNotebook {
         constructor() {

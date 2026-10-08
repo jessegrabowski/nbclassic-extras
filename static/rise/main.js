@@ -76,8 +76,7 @@ define([
       overlay: undefined,
 
       // timeouts
-      // wait for that amont before calling ensure_focused on the
-      // selected cell
+      // wait for that amount before calling ensure_focused on the selected cell
       restore_timeout: 500,
       // wait for that amount before actually selected auto-selected fragment
       // when going too short, like 250, size of selected cell get odd
@@ -102,9 +101,6 @@ define([
       // see also the 'inherited' variable below in Revealer
       theme: 'simple',
       transition: 'linear',
-      // xxx there might be a need to tweak this one when set
-      // by the configurator, as e.g. 'false' or 'true' will result
-      // in a string and not a boolean
       slideNumber: true,
       width: "100%",
       height: "100%",
@@ -282,7 +278,7 @@ define([
      */
     for (let i=0; i < cells.length; i++) {
       let cell = cells[i];
-      // default is 'pinned' because this applies to the last cell
+      // the last cell, with no next cell, runs in place
       let tag = 'smart_exec_slide';
       for (let j = i+1; j < cells.length; j++) {
         let next_cell = cells[j];
@@ -317,12 +313,6 @@ define([
   let pending_auto_select = null;
   let pending_buttons_fade = null;
 
-  /* Set the #slide-x-y part of the URL to control where the slideshow will start.
-   * N.B. We do this instead of using Reveal.slide() after reveal initialises,
-   * because that leaves one slide clearly visible on screen for a moment before
-   * changing to the one we want. By changing the URL before setting up reveal,
-   * the slideshow really starts on the desired slide.
-   */
   function setStartingSlide(selected) {
 
     let start_slideshow = complete_config.start_slideshow_at;
@@ -334,13 +324,8 @@ define([
       Reveal.slide(0, 0);
     }
     setScrollingSlide();
-    // warkaround for #504
-    // when editing if you swap out of reveal, and then
-    // come back in, with 5.6 most of the time display 
-    // becomes empty or the contents is way too low
-    // this patch makes the situation much better,
-    // although it is clearly suboptimal to have 
-    // to resort to that sort of dirty patch
+    // a second sync once the cells have settled keeps the slide from showing empty or too low
+    // after re-entering, https://github.com/damianavila/RISE/issues/504
     pending_sync = setTimeout(()=>Reveal.sync(), complete_config.sync_timeout);
   }
 
@@ -356,7 +341,7 @@ define([
         .filter(function() {
           return $(this).height() > h;
         })
-        .css('height', 'calc(95vh)')
+        .css('height', '95vh')
         .css('overflow-y', 'scroll')
         .css('margin-top', '20px');
     }
@@ -423,7 +408,7 @@ define([
     // we enter reveal again
     $('div#rise-overlay').remove();
   }
-   
+
   // reveal.js loads as an AMD module on the first entry; every entry initializes the deck and
   // every exit destroys it, so plugins and listeners follow the config of the current entry
   let Reveal = null;
@@ -462,7 +447,7 @@ define([
   }
 
   function toggleAllRiseButtons() {
-    $(RISE_BUTTONS).fadeToggle()
+    $(RISE_BUTTONS).fadeToggle();
   }
 
   function chalkboard() {
@@ -507,11 +492,8 @@ define([
     addChalkboardButton('toggle-notes', 'fa-pencil',
                         () => chalkboard().toggleNotesCanvas(), config.toggleNotesButton, '70px');
   }
-  
+
   function Revealer(selected_slide) {
-    
-    // console.log(`complete_config: ${JSON.stringify(complete_config)}`);
-    
     let entry = ++last_entry;
     current_entry = entry;
     $('body').addClass("rise-enabled");
@@ -572,17 +554,11 @@ define([
       // Full list of configuration options available here:
       // https://revealjs.com/config/
 
-      // all these settings are passed along to reveal as-is
-      // xxx it might be just better to copy the whole complete_config instead
-      // of selecting some names, which would allow users to transparently use
-      // all reveal's features
+      // the RISE settings passed to reveal as-is
       let inherited = ['controls', 'progress', 'history', 'width', 'height', 'margin',
                        'minScale', 'transition', 'slideNumber', 'center', 'help'];
 
       let options = {
-
-        // turn off reveal native help
-        help: false,
 
         // the URL hash names only the slide, and the deck never switches to reveal's scroll
         // view in a narrow window
@@ -683,16 +659,11 @@ define([
     }
   }
 
-  function fixCellHeight(){
-    // Let's start with all the cell unselected, the unselect the current selected one
-    let scell = Jupyter.notebook.get_selected_cell();
-    scell.unselect();
-    // This select/unselect code cell triggers the "correct" heigth in the codemirror instance
-    let cells = Jupyter.notebook.get_cells();
-    for (let cell of cells){
+  // CodeMirror sized its editors inside the slides; size them again for the notebook
+  function refreshEditors() {
+    for (let cell of Jupyter.notebook.get_cells()) {
       if (cell.cell_type === "code") {
-        cell.select();
-        cell.unselect();
+        cell.code_mirror.refresh();
       }
     }
   }
@@ -720,7 +691,7 @@ define([
       Jupyter.notebook.execute_cell_and_select_below();
     }
   }
-  
+
   /*
    * The slideshow actions RISE registers as RISE:<action>, by module as the reveal_shortcuts
    * setting names them. `key` is the default command-mode shortcut inside the slideshow; an
@@ -869,7 +840,7 @@ define([
 
   /*
    * Creates a list item string for help dialog
-   * 
+   *
    * Args:
    * shortcut_str = string representation of keyboard shortcut(s)
    * help_str = help text to be shown for item
@@ -877,7 +848,7 @@ define([
   function helpListItem(shortcut_str, help_str){
     return `<li>${shortcutRepr(shortcut_str)} : ${help_str}</li>`;
   }
-  
+
   function riseHelp() {
     let bindings = revealBindings();
     let item = (module, action) =>
@@ -1036,14 +1007,6 @@ define([
     the first slide however may be different as the first cell may be a fragment
     which I chose not to support for now
     bottom line: is fragments also starts at 0
-
-    ---------- historical note
-
-    in a previous implementation - for traditional notebooks -
-    we used to get slide and subslide from window.location.href
-    however this in jupyter lab may be no longer possible
-
-    in addition this is the way to go for getting info on the current fragment
   */
   function reveal_current_position() {
     // reveal shows nothing until its first start finishes
@@ -1091,7 +1054,7 @@ define([
     let result = null;
 
     let cells = notebook.get_cells();
-    for (let index in cells) {
+    for (let index = 0; index < cells.length; index++) {
       let cell = cells[index];
       // ignore skip cells no matter what
       if (is_skip(cell) || is_notes(cell))
@@ -1208,7 +1171,7 @@ define([
       {help   : 'output RISE configuration in console, for debugging mostly',
        handler: showConfig},
       "rise-dump-config", "RISE");
-    
+
     for (const module of Object.keys(REVEAL_ACTIONS)) {
       for (const [action, spec] of Object.entries(REVEAL_ACTIONS[module])) {
         actions.register({help: spec.help, handler: spec.run}, action, "RISE");
@@ -1239,8 +1202,7 @@ define([
       setupKeys("notebook_mode");
       $('#exit_b').remove();
       $('#help_b').remove();
-      // Workaround... should be a better solution. Need to investigate codemirror
-      fixCellHeight();
+      refreshEditors();
       // select and focus on current cell
       Jupyter.notebook.select(current_cell_index);
       // Need to delay the action a little bit so it actually focus the selected slide
@@ -1288,7 +1250,6 @@ define([
       let shortcut = shortcuts[action_name];
       // ignore if shortcut is set to an empty string
       if (shortcut) {
-        // console.log(`RISE: adding shortcut ${shortcut} for RISE:${action_name}`);
         Jupyter.notebook.keyboard_manager.command_shortcuts.add_shortcut(
           shortcut, `RISE:${action_name}`);
       }
@@ -1311,7 +1272,6 @@ define([
       .appendTo('head');
 
     configLoaded()
-    //      .then(showConfig)
       .then(registerJupyterActions)
       .then(addButtonsAndShortcuts)
       .then(enterSlideshowInSpeakerView)
