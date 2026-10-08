@@ -311,7 +311,7 @@ Parameters:
     <code>scroll</code>: make a (sub)slide taller than the screen scrollable; a RISE setting,
     not passed to reveal
   input_type: checkbox
-  default: false
+  default: true
 #
 - name: rise.center
   description: >

@@ -108,7 +108,7 @@ define([
       controls: true,
       progress: true,
       history: true,
-      scroll: false,
+      scroll: true,
       center: true,
       margin: 0.1,
       minScale: 1.0, // we need this for codemirror to work right

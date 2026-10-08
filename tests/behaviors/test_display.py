@@ -108,18 +108,18 @@ def test_rise_css_and_notebook_css_are_applied_in_the_slideshow(nbclassic_server
         rise_css.unlink()
 
 
-def test_scroll_option_makes_a_tall_subslide_scrollable(nbclassic_server, page):
+def test_a_tall_subslide_is_scrollable_by_default(nbclassic_server, page):
     tall = "\n\n".join(f"Line {number}" for number in range(80))
-    metadata = {"rise": {"scroll": True}}
-    nbclassic_server.open_notebook(page, [markdown(tall, "slide")], metadata=metadata)
+    nbclassic_server.open_notebook(page, [markdown(tall, "slide")])
     enter_slideshow(page)
 
     expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")
 
 
-def test_tall_subslide_does_not_scroll_by_default(nbclassic_server, page):
+def test_scroll_off_leaves_a_tall_subslide_unscrollable(nbclassic_server, page):
     tall = "\n\n".join(f"Line {number}" for number in range(80))
-    nbclassic_server.open_notebook(page, [markdown(tall, "slide")])
+    metadata = {"rise": {"scroll": False}}
+    nbclassic_server.open_notebook(page, [markdown(tall, "slide")], metadata=metadata)
     enter_slideshow(page)
     subslide = page.locator(CURRENT_SUBSLIDE)
 
