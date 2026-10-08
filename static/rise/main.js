@@ -369,32 +369,20 @@ define([
     }
   }
 
-  /* Setup a MutationObserver to call Reveal.sync when an output is generated.
-   * This fixes issue #188: https://github.com/damianavila/RISE/issues/188
+  /* Resync reveal when a cell's output changes the size of its slide, including the outputs of
+   * cells added during the slideshow; see https://github.com/damianavila/RISE/issues/188
    */
   let outputObserver = null;
   function setupOutputObserver() {
-    function mutationHandler(mutationRecords) {
-      mutationRecords.forEach(function(mutation) {
-        if (mutation.addedNodes && mutation.addedNodes.length) {
-          Reveal.sync();
-          setScrollingSlide();
-        }
-      });
-    }
-
-    let $output = $(".output");
-    let MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
-    outputObserver = new MutationObserver(mutationHandler);
-
-    let observerOptions = { childList: true,
-                            characterData: false,
-                            attributes: false,
-                            subtree: false
-                          };
-    $output.each(function () {
-      outputObserver.observe(this, observerOptions);
+    outputObserver = new MutationObserver(function(mutationRecords) {
+      let output_added = mutationRecords.some(
+        (record) => record.addedNodes.length && $(record.target).is('.output'));
+      if (output_added) {
+        Reveal.sync();
+        setScrollingSlide();
+      }
     });
+    outputObserver.observe($('div#notebook-container')[0], {childList: true, subtree: true});
   }
 
   function disconnectOutputObserver() {
@@ -664,8 +652,6 @@ define([
         autoSelectHook();
       });
 
-      // Sync when an output is generated.
-      setupOutputObserver();
       addHeaderFooterOverlay();
 
       started.then(function() {
@@ -674,6 +660,7 @@ define([
           return;
         }
         setStartingSlide(selected_slide);
+        setupOutputObserver();
         if (enable_chalkboard) {
           addChalkboardButtons();
         }

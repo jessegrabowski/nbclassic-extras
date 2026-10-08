@@ -153,6 +153,24 @@ def test_new_output_that_overflows_the_slide_makes_it_scrollable(nbclassic_serve
     expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")
 
 
+def test_output_of_a_cell_added_during_the_slideshow_can_make_the_slide_scrollable(
+    nbclassic_server, page
+):
+    cells = [code("x = 1", "slide")]
+    nbclassic_server.open_notebook(
+        page, cells, metadata={"rise": {"scroll": True}}, wait_for_kernel=True
+    )
+    enter_slideshow(page)
+    expect(page.locator(CURRENT_SUBSLIDE)).not_to_have_css("overflow-y", "scroll")
+
+    page.keyboard.press("b")
+    page.keyboard.press("Enter")
+    page.keyboard.type("print('\\n'.join(map(str, range(80))))")
+    page.keyboard.press("Shift+Enter")
+
+    expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")
+
+
 def test_exit_selects_the_first_cell_of_the_slide_being_shown(nbclassic_server, page):
     cells = [markdown("Alpha", "slide"), code("x = 1"), markdown("Bravo", "slide"), code("y = 2")]
     nbclassic_server.open_notebook(page, cells, metadata={"rise": {"auto_select": "none"}})
