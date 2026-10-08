@@ -605,6 +605,9 @@ define([
         scrollActivationWidth: null,
         // cells stay editable in the slideshow, so returning to the tab keeps the editor focused
         focusBodyOnPageVisibilityChange: false,
+        // the pointer stays visible over editable cells; reveal's hiding timer would also outlive
+        // destroy() and hide it over the notebook after exit
+        hideInactiveCursor: false,
 
         // keys RISE binds are in REVEAL_ACTIONS; this only unbinds reveal's own
         // note that toggleAllRiseButtons is bound to comma here as jupyter does not

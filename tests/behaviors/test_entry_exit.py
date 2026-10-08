@@ -147,3 +147,16 @@ def test_a_cell_div_inside_an_output_is_not_counted_as_a_notebook_cell(nbclassic
     enter_slideshow(page)
     exit_slideshow(page)
     assert page.evaluate("() => Jupyter.notebook.ncells()") == 2
+
+
+def test_the_pointer_stays_visible_over_the_notebook_after_exit(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
+    enter_slideshow(page)
+    page.clock.install()
+    page.mouse.move(400, 300)
+    exit_slideshow(page)
+
+    # longer than reveal's hideCursorTime
+    page.clock.run_for(6000)
+
+    assert page.evaluate("() => document.getElementById('notebook').style.cursor") == ""
