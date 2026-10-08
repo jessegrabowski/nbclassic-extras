@@ -55,6 +55,8 @@ packages = ["nbclassic_extras"]
 [tool.hatch.build.targets.wheel.shared-data]
 "static/rise" = "share/jupyter/nbextensions/rise"
 "jupyter-config/notebook.d/rise.json" = "etc/jupyter/nbconfig/notebook.d/rise.json"
+"static/gist_it" = "share/jupyter/nbextensions/gist_it"
+"jupyter-config/notebook.d/gist_it.json" = "etc/jupyter/nbconfig/notebook.d/gist_it.json"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
