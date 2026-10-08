@@ -299,6 +299,36 @@ test("header, backimage and footer are added to one overlay in that order", asyn
     assert.equal($("#rise-backimage").attr("src"), "back.png");
 });
 
+const UNSAFE_HEADER = '<b>Title</b><img src="x" onerror="window.injected = 1">';
+
+test("an untrusted notebook's header keeps its markup and loses its handlers", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { header: UNSAFE_HEADER } },
+        trusted: false,
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.equal($("#rise-header b").text(), "Title");
+    assert.equal($("#rise-header [onerror]").length, 0);
+});
+
+test("a trusted notebook's header is inserted as written", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { header: UNSAFE_HEADER } },
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.equal($("#rise-header img").attr("onerror"), "window.injected = 1");
+});
+
 test("the overlay option replaces header, backimage and footer", async (t) => {
     const metadata = { rise: { header: "Top", overlay: "<p id='custom'>Mine</p>" } };
     const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });

@@ -12,6 +12,8 @@ const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
 const KEYBOARD_JS = readStatic("base", "js", "keyboard.js");
+const SANITIZER_JS = readStatic("components", "sanitizer", "index.js");
+const SECURITY_JS = readStatic("base", "js", "security.js");
 
 function readStatic(...parts) {
     return fs.readFileSync(path.join(NBCLASSIC_STATIC, ...parts), "utf8");
@@ -102,6 +104,18 @@ function loadKeyboard(window, $) {
     return factory($, { browser: ["Chrome"], platform: "Linux" }, window._);
 }
 
+// Load nbclassic's base/js/security module and the sanitizer bundle it wraps.
+function loadSecurity(window, $) {
+    let factory = null;
+    window.define = (...args) => {
+        factory = args[args.length - 1];
+    };
+    window.eval(SANITIZER_JS);
+    const sanitizer = factory();
+    window.eval(SECURITY_JS);
+    return factory($, sanitizer);
+}
+
 function shortcutManager(keyboard, defaults) {
     const manager = new keyboard.ShortcutManager(undefined,
                                                  { trigger() {} },
@@ -144,11 +158,12 @@ function makeCells($, specs) {
 }
 
 // Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements.
-function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded, name) {
+function makeNotebook($, { metadata, notebookConfig, shortcuts, actions, loaded, name, trusted }) {
     class FakeNotebook {
         constructor() {
             this.container = $("#notebook-container");
             this.notebook_name = name;
+            this.trusted = trusted;
             this._fully_loaded = loaded;
             this.metadata = loaded ? metadata : {};
             this.events = new FakeEvents();
@@ -260,6 +275,7 @@ function makeReveal(window) {
  * @param {boolean} [options.revealLoadFails] - true fails every reveal.js load, as RequireJS
  *     does when a script cannot be fetched.
  * @param {string} [options.notebookName] - the notebook's file name.
+ * @param {boolean} [options.trusted] - whether nbclassic trusts the notebook.
  */
 async function loadRise({
     cells,
@@ -270,6 +286,7 @@ async function loadRise({
     revealLoaded = true,
     revealLoadFails = false,
     notebookName = "slides.ipynb",
+    trusted = true,
 }) {
     const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(PAGE, {
@@ -282,6 +299,7 @@ async function loadRise({
     window.eval(JQUERY_JS);
     const $ = window.jQuery;
     const keyboard = loadKeyboard(window, $);
+    const security = loadSecurity(window, $);
 
     const actions = new Map();
     const actionRegistry = {
@@ -294,13 +312,15 @@ async function loadRise({
         edit: shortcutManager(keyboard, NBCLASSIC_EDIT_SHORTCUTS),
     };
     const notebookCells = makeCells($, cells);
-    const notebook = makeNotebook($,
-                                  metadata,
-                                  notebookConfig,
-                                  shortcuts,
-                                  actionRegistry,
-                                  notebookLoaded,
-                                  notebookName);
+    const notebook = makeNotebook($, {
+        metadata: metadata,
+        notebookConfig: notebookConfig,
+        shortcuts: shortcuts,
+        actions: actionRegistry,
+        loaded: notebookLoaded,
+        name: notebookName,
+        trusted: trusted,
+    });
     const dialogs = [];
     const Jupyter = {
         notebook: notebook,
@@ -333,7 +353,7 @@ async function loadRise({
         factory = body;
     };
     window.eval(MAIN_JS);
-    const setup = factory(fakeRequire, $, Jupyter, utils, configmod, keyboard);
+    const setup = factory(fakeRequire, $, Jupyter, utils, configmod, keyboard, security);
     setup();
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 

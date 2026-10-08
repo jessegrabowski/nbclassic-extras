@@ -15,7 +15,8 @@ define([
   'base/js/utils',
   'services/config',
   'base/js/keyboard',
-], function(require, $, Jupyter, utils, configmod, keyboard) {
+  'base/js/security',
+], function(require, $, Jupyter, utils, configmod, keyboard, security) {
 
   "use strict";
 
@@ -376,29 +377,38 @@ define([
     }
   }
 
+  // the overlay settings can come from notebook metadata, so an untrusted notebook's markup is
+  // sanitized the way nbclassic sanitizes its outputs; a trusted notebook's is inserted as written
+  function metadataHtml(html) {
+    return Jupyter.notebook.trusted ? html : security.sanitize_html(html, true);
+  }
+
   function addHeaderFooterOverlay() {
     let overlay = complete_config.overlay;
-    let header =  complete_config.header;
-    let footer =  complete_config.footer;
-    let backimage =  complete_config.backimage;
-    // minimum styling to make these 3 things look
-    // like what their name says they should look
-    let header_style = "position: absolute; top: 0px;";
-    let footer_style = "position: absolute; bottom: 0px;";
-    let backimage_style = "width: 100%; height: 100%;";
+    let header = complete_config.header;
+    let footer = complete_config.footer;
+    let backimage = complete_config.backimage;
 
-    let overlay_body = "";
+    let overlay_div = $('<div/>').attr('id', 'rise-overlay');
     if (overlay) {
-      overlay_body = overlay;
+      overlay_div.append(metadataHtml(overlay));
     } else {
-      if (header)
-        overlay_body += `<div id='rise-header' style='${header_style}'>${header}</div>`;
-      if (backimage)
-        overlay_body += `<img id='rise-backimage' style='${backimage_style}' src='${backimage}' />`;
-      if (footer)
-        overlay_body += `<div id='rise-footer' style='${footer_style}'>${footer}</div>`;
+      // minimum styling to make these 3 things look like what their name says
+      if (header) {
+        overlay_div.append($('<div/>').attr('id', 'rise-header')
+                           .css({position: 'absolute', top: '0px'})
+                           .append(metadataHtml(header)));
+      }
+      if (backimage) {
+        overlay_div.append($('<img/>').attr({id: 'rise-backimage', src: backimage})
+                           .css({width: '100%', height: '100%'}));
+      }
+      if (footer) {
+        overlay_div.append($('<div/>').attr('id', 'rise-footer')
+                           .css({position: 'absolute', bottom: '0px'})
+                           .append(metadataHtml(footer)));
+      }
     }
-    let overlay_div = `<div id='rise-overlay'>${overlay_body}</div>`;
     $('div.reveal').append(overlay_div);
   }
 

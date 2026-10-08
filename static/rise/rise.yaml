@@ -100,8 +100,11 @@ Parameters:
 #
 - name: rise.overlay
   description: >
-    <code>overlay</code>: some html text that will be inserted as-is on all pages. If this is provided,
+    <code>overlay</code>: some html text that will be inserted on all pages. If this is provided,
     the 3 previous settings (header, footer and backimage) are ignored altogether.
+    In a notebook that Jupyter does not trust, the html of <code>overlay</code>,
+    <code>header</code> and <code>footer</code> is sanitized the way untrusted outputs are,
+    which keeps markup and styles and removes scripts and event handlers.
   input_type: text
   default:
 #
