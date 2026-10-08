@@ -16,12 +16,11 @@ def test_gist_it_adds_its_toolbar_button(nbclassic_server, page):
     expect(page.locator(f"{GIST_BUTTON} .fa-github")).to_be_visible()
 
 
-def test_the_server_refuses_a_gist_id_that_is_not_hex_without_calling_gh(nbclassic_server):
+@pytest.mark.parametrize("gist_id", ["../../user/repos", 123], ids=["path", "number"])
+def test_the_server_refuses_a_gist_id_that_is_not_hex_without_calling_gh(nbclassic_server, gist_id):
     request = urllib.request.Request(
         nbclassic_server.url("gist_it/gists"),
-        data=json.dumps(
-            {"id": "../../user/repos", "filename": "talk.ipynb", "content": "{}"}
-        ).encode(),
+        data=json.dumps({"id": gist_id, "filename": "talk.ipynb", "content": "{}"}).encode(),
         method="POST",
     )
 

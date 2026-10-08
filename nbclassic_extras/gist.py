@@ -126,7 +126,7 @@ class GistsHandler(GhHandler):
     async def post(self):
         request = self.get_json_body() or {}
         gist_id = request.get("id") or ""
-        if gist_id and not GIST_ID.fullmatch(gist_id):
+        if gist_id and not (isinstance(gist_id, str) and GIST_ID.fullmatch(gist_id)):
             raise web.HTTPError(400, "A gist id is made of the letters a-f and digits only.")
         filename, content = request.get("filename"), request.get("content")
         if not isinstance(filename, str) or not isinstance(content, str):
