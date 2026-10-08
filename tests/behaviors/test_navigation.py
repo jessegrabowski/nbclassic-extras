@@ -115,9 +115,11 @@ def test_url_hash_follows_the_current_subslide_and_clears_on_exit(nbclassic_serv
 
     page.keyboard.press("Space")
     expect(page).to_have_url(re.compile(r"#/slide-1-0$"))
+    entries = page.evaluate("() => history.length")
 
     exit_slideshow(page)
     page.wait_for_function("() => location.hash === ''", timeout=5000)
+    assert page.evaluate("() => history.length") == entries
 
 
 def test_slideshow_starts_on_the_slide_of_the_selected_cell(nbclassic_server, page):

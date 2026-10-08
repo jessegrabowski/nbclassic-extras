@@ -238,6 +238,7 @@ Please report this to https://github.com/markedjs/marked.`,e){let e=`<p>An error
 				}
 
 			/* Jupyter cells shown as notes keep only their rendered output */
+			.speaker-controls-notes .input_prompt,
 			.speaker-controls-notes .inner_cell > .ctb_hideshow,
 			.speaker-controls-notes .inner_cell > .input_area {
 				display: none;

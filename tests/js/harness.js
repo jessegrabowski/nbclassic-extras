@@ -12,6 +12,8 @@ const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
 const KEYBOARD_JS = readStatic("base", "js", "keyboard.js");
+const SANITIZER_JS = readStatic("components", "sanitizer", "index.js");
+const SECURITY_JS = readStatic("base", "js", "security.js");
 
 function readStatic(...parts) {
     return fs.readFileSync(path.join(NBCLASSIC_STATIC, ...parts), "utf8");
@@ -61,17 +63,21 @@ function cell(source, slideType, cellType = "markdown") {
 
 class FakeEvents {
     constructor() {
-        this.handlers = new Map();
+        this.handlers = [];
+    }
+
+    on(name, handler) {
+        this.handlers.push({ name: name, handler: handler, once: false });
     }
 
     one(name, handler) {
-        this.handlers.set(name, [...(this.handlers.get(name) || []), handler]);
+        this.handlers.push({ name: name, handler: handler, once: true });
     }
 
-    trigger(name) {
-        const handlers = this.handlers.get(name) || [];
-        this.handlers.delete(name);
-        handlers.forEach((handler) => handler());
+    trigger(name, data) {
+        const matching = this.handlers.filter((entry) => entry.name === name);
+        this.handlers = this.handlers.filter((entry) => entry.name !== name || !entry.once);
+        matching.forEach((entry) => entry.handler({ type: name }, data));
     }
 }
 
@@ -100,6 +106,18 @@ function loadKeyboard(window, $) {
     };
     window.eval(KEYBOARD_JS);
     return factory($, { browser: ["Chrome"], platform: "Linux" }, window._);
+}
+
+// Load nbclassic's base/js/security module and the sanitizer bundle it wraps.
+function loadSecurity(window, $) {
+    let factory = null;
+    window.define = (...args) => {
+        factory = args[args.length - 1];
+    };
+    window.eval(SANITIZER_JS);
+    const sanitizer = factory();
+    window.eval(SECURITY_JS);
+    return factory($, sanitizer);
 }
 
 function shortcutManager(keyboard, defaults) {
@@ -136,19 +154,20 @@ function makeCells($, specs) {
             render() { this.rendered = true; },
             unrender() { this.rendered = false; },
             ensure_focused() {},
+            code_mirror: { refresh() {} },
         };
         element.data("cell", cell);
         return cell;
     });
 }
 
-// Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements, which
-// RISE overrides on the prototype. A class per page keeps that override from leaking across tests.
-function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded) {
+// Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements.
+function makeNotebook($, { metadata, notebookConfig, shortcuts, actions, loaded, name, trusted }) {
     class FakeNotebook {
         constructor() {
             this.container = $("#notebook-container");
-            this.notebook_name = "slides.ipynb";
+            this.notebook_name = name;
+            this.trusted = trusted;
             this._fully_loaded = loaded;
             this.metadata = loaded ? metadata : {};
             this.events = new FakeEvents();
@@ -203,26 +222,32 @@ function configSection(data) {
     return { data: data, loaded: Promise.resolve(), load() {} };
 }
 
-// Holds the slide reveal is showing and fires its ready event, so RISE's own lookups and
-// listeners work. Tests assert only on the listeners RISE leaves registered, not on calls into
-// reveal.
+// Holds the slide reveal is showing and, like reveal, fires its ready event once each
+// initialize finishes starting, unless destroy() came first. Tests assert only on the listeners
+// RISE leaves registered, not on calls into reveal.
 function makeReveal(window) {
     let current = null;
     let listeners = [];
-    let ready = false;
+    let initialized = false;
     return {
         initialize() {
-            const fireReady = () => listeners
-                .filter((listener) => listener.name === "ready")
-                .forEach((listener) => listener.callback());
+            if (initialized) {
+                throw new Error("Reveal.js has already been initialized.");
+            }
+            initialized = true;
             return new Promise((resolve) => window.setTimeout(() => {
-                ready = true;
-                fireReady();
+                if (!initialized) {
+                    return;
+                }
+                listeners
+                    .filter((listener) => listener.name === "ready")
+                    .forEach((listener) => listener.callback());
                 resolve();
             }, 0));
         },
-        isReady: () => ready,
-        configure() {},
+        destroy() {
+            initialized = false;
+        },
         addEventListener(name, callback) {
             listeners.push({ name: name, callback: callback });
         },
@@ -230,14 +255,12 @@ function makeReveal(window) {
             listeners = listeners.filter((l) => l.name !== name || l.callback !== callback);
         },
         listenerCount: (name) => listeners.filter((listener) => listener.name === name).length,
-        // Like reveal's, this unbinds reveal's own input handlers and leaves added listeners alone.
-        removeEventListeners() {},
         sync() {},
         slide(h, v) {
             current = window.document.getElementById(`slide-${h}-${v || 0}`);
         },
         getCurrentSlide: () => current,
-        getConfig: () => ({ width: 960, height: 700 }),
+        getPlugin: () => undefined,
     };
 }
 
@@ -253,6 +276,10 @@ function makeReveal(window) {
  *     nbclassic does while the notebook JSON is still loading, until finishNotebookLoad().
  * @param {boolean} [options.revealLoaded] - false holds back reveal.js, as RequireJS does while
  *     it downloads, until finishRevealLoad().
+ * @param {boolean} [options.revealLoadFails] - true fails every reveal.js load, as RequireJS
+ *     does when a script cannot be fetched.
+ * @param {string} [options.notebookName] - the notebook's file name.
+ * @param {boolean} [options.trusted] - whether nbclassic trusts the notebook.
  */
 async function loadRise({
     cells,
@@ -261,6 +288,9 @@ async function loadRise({
     notebookConfig = {},
     notebookLoaded = true,
     revealLoaded = true,
+    revealLoadFails = false,
+    notebookName = "slides.ipynb",
+    trusted = true,
 }) {
     const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(PAGE, {
@@ -273,6 +303,7 @@ async function loadRise({
     window.eval(JQUERY_JS);
     const $ = window.jQuery;
     const keyboard = loadKeyboard(window, $);
+    const security = loadSecurity(window, $);
 
     const actions = new Map();
     const actionRegistry = {
@@ -285,12 +316,15 @@ async function loadRise({
         edit: shortcutManager(keyboard, NBCLASSIC_EDIT_SHORTCUTS),
     };
     const notebookCells = makeCells($, cells);
-    const notebook = makeNotebook($,
-                                  metadata,
-                                  notebookConfig,
-                                  shortcuts,
-                                  actionRegistry,
-                                  notebookLoaded);
+    const notebook = makeNotebook($, {
+        metadata: metadata,
+        notebookConfig: notebookConfig,
+        shortcuts: shortcuts,
+        actions: actionRegistry,
+        loaded: notebookLoaded,
+        name: notebookName,
+        trusted: trusted,
+    });
     const dialogs = [];
     const Jupyter = {
         notebook: notebook,
@@ -307,8 +341,10 @@ async function loadRise({
     const utils = { get_body_data: () => "" };
     const reveal = makeReveal(window);
     const pendingLoads = [];
-    const fakeRequire = (deps, callback) => {
-        if (revealLoaded) {
+    const fakeRequire = (deps, callback, errback) => {
+        if (revealLoadFails) {
+            window.setTimeout(() => errback(new Error("script error")), 0);
+        } else if (revealLoaded) {
             callback(reveal);
         } else {
             pendingLoads.push(() => callback(reveal));
@@ -321,7 +357,7 @@ async function loadRise({
         factory = body;
     };
     window.eval(MAIN_JS);
-    const setup = factory(fakeRequire, $, Jupyter, utils, configmod, keyboard);
+    const setup = factory(fakeRequire, $, Jupyter, utils, configmod, keyboard, security);
     setup();
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
@@ -349,6 +385,16 @@ async function loadRise({
             notebook.events.trigger("notebook_loaded.Notebook");
         },
         idle: (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
+        // waits for RISE's timers to make `condition` true, however slowly they run
+        async until(condition, timeout = 2000) {
+            const deadline = Date.now() + timeout;
+            while (!condition()) {
+                if (Date.now() > deadline) {
+                    throw new Error(`timed out waiting for ${condition}`);
+                }
+                await new Promise((resolve) => window.setTimeout(resolve, 5));
+            }
+        },
         close: () => closePage(window),
     };
 }

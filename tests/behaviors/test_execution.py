@@ -1,4 +1,6 @@
-from nbformat.v4 import new_code_cell
+import re
+
+from nbformat.v4 import new_code_cell, new_markdown_cell
 from playwright.sync_api import expect
 from slideshow import CURRENT_SUBSLIDE, code, enter_slideshow, exit_slideshow, markdown
 
@@ -80,6 +82,32 @@ def test_shift_enter_on_a_cell_added_during_the_slideshow_moves_on(nbclassic_ser
 
     expect(page.locator(".cell").nth(1).locator(".output_area")).to_contain_text("added")
     expect(selected_cell_text(page)).to_contain_text("print('last')")
+    # it was shown on the current slide, and is saved as continuing it
+    slide_type = "() => Jupyter.notebook.get_cell(1).metadata.slideshow.slide_type"
+    assert page.evaluate(slide_type) == "-"
+
+
+def test_a_cell_pasted_during_the_slideshow_stays_on_its_slide(nbclassic_server, page):
+    # no cell has a slide type, so each cell is a slide
+    cells = [new_markdown_cell("Alpha"), new_code_cell("x = 1"), new_markdown_cell("Bravo")]
+    metadata = {"rise": {"auto_select_timeout": AUTO_SELECT_TIMEOUT}}
+    nbclassic_server.open_notebook(page, cells, metadata=metadata)
+    enter_slideshow(page)
+    page.evaluate(
+        """() => {
+            Jupyter.notebook.clipboard = [{cell_type: 'code', source: 'pasted = 1', metadata: {},
+                                           outputs: [], execution_count: null}];
+            Jupyter.notebook.enable_paste();
+            Jupyter.notebook.select(0);
+            Jupyter.notebook.paste_cell_below();
+        }"""
+    )
+
+    page.keyboard.press("Escape")
+    page.keyboard.press("Space")
+
+    expect(page).to_have_url(re.compile(r"#/slide-1-0$"))
+    expect(selected_cell_text(page)).to_contain_text("x = 1")
 
 
 def test_auto_select_code_selects_the_first_code_cell_of_the_slide(nbclassic_server, page):
@@ -148,6 +176,24 @@ def test_new_output_that_overflows_the_slide_makes_it_scrollable(nbclassic_serve
     expect(selected_cell_text(page)).to_contain_text("for line")
 
     page.locator(".cell").nth(0).locator(".CodeMirror").click()
+    page.keyboard.press("Shift+Enter")
+
+    expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")
+
+
+def test_output_of_a_cell_added_during_the_slideshow_can_make_the_slide_scrollable(
+    nbclassic_server, page
+):
+    cells = [code("x = 1", "slide")]
+    nbclassic_server.open_notebook(
+        page, cells, metadata={"rise": {"scroll": True}}, wait_for_kernel=True
+    )
+    enter_slideshow(page)
+    expect(page.locator(CURRENT_SUBSLIDE)).not_to_have_css("overflow-y", "scroll")
+
+    page.keyboard.press("b")
+    page.keyboard.press("Enter")
+    page.keyboard.type("print('\\n'.join(map(str, range(80))))")
     page.keyboard.press("Shift+Enter")
 
     expect(page.locator(CURRENT_SUBSLIDE)).to_have_css("overflow-y", "scroll")

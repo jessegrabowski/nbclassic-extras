@@ -89,7 +89,30 @@ test("a fragment groups the regular cells that follow it", async (t) => {
     assert.deepEqual(cellTexts($, fragments.eq(1)), ["Delta"]);
 });
 
-test("dash and unset slide types are regular cells", async (t) => {
+test("a notebook without slide types shows one cell per slide", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", undefined), cell("Bravo", undefined)] });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(cellTexts($, "#slide-0-0"), ["Alpha"]);
+    assert.deepEqual(cellTexts($, "#slide-1-0"), ["Bravo"]);
+});
+
+test("dash cells do not keep an otherwise untyped notebook from one cell per slide", async (t) => {
+    const cells = [cell("Alpha", undefined), cell("Bravo", "-"), cell("Charlie", undefined)];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(cellTexts($, "#slide-0-0"), ["Alpha", "Bravo"]);
+    assert.deepEqual(cellTexts($, "#slide-1-0"), ["Charlie"]);
+});
+
+test("in a notebook with slide types, dash, empty and unset all continue a slide", async (t) => {
     const cells = [
         cell("Alpha", "slide"),
         cell("Bravo", "-"),
@@ -166,7 +189,7 @@ test("exiting keeps notebook order when a notes cell follows a fragment", async 
         t.after(rise.close);
 
         rise.run("RISE:slideshow");
-        await rise.idle(20);
+        await rise.until(() => rise.cells[1].selected);
 
         assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
     });
@@ -206,6 +229,21 @@ CONFIG_LAYERS.forEach(([layerName, layerTheme], top) => {
         const themes = bodyClasses.filter((name) => name.startsWith("theme-"));
         assert.deepEqual(themes, [`theme-${layerTheme}`]);
     });
+});
+
+test("the theme and notebook name land in stylesheet links as plain URLs", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { theme: 'sky" onload="window.injected = 1' } },
+        notebookName: 'talk "one" #2.ipynb',
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.equal($("link[onload]").length, 0);
+    assert.equal($("link#rise-notebook-css").attr("href"), "talk%20%22one%22%20%232.css");
 });
 
 test("nested settings from different config layers merge", async (t) => {
@@ -282,6 +320,36 @@ test("header, backimage and footer are added to one overlay in that order", asyn
     const children = Array.from(overlay.children(), (element) => element.id);
     assert.deepEqual(children, ["rise-header", "rise-backimage", "rise-footer"]);
     assert.equal($("#rise-backimage").attr("src"), "back.png");
+});
+
+const UNSAFE_HEADER = '<b>Title</b><img src="x" onerror="window.injected = 1">';
+
+test("an untrusted notebook's header keeps its markup and loses its handlers", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { header: UNSAFE_HEADER } },
+        trusted: false,
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.equal($("#rise-header b").text(), "Title");
+    assert.equal($("#rise-header [onerror]").length, 0);
+});
+
+test("a trusted notebook's header is inserted as written", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { header: UNSAFE_HEADER } },
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.equal($("#rise-header img").attr("onerror"), "window.injected = 1");
 });
 
 test("the overlay option replaces header, backimage and footer", async (t) => {
@@ -370,7 +438,10 @@ test("a custom shortcut replaces its default and an empty one unbinds it", async
 });
 
 test("inside the slideshow the reveal and plugin actions are bound to their keys", async (t) => {
-    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true } },
+    });
     t.after(rise.close);
 
     rise.run("RISE:slideshow");
@@ -461,6 +532,21 @@ test("exiting while reveal is still loading restores the notebook and never star
     assert.equal(rise.revealListenerCount("ready"), 0);
 });
 
+test("slideshow keys pressed while reveal is still loading do nothing", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true } },
+        revealLoaded: false,
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+
+    for (const action of ["toggleOverview", "lastSlide", "openNotes", "toggleChalkboard"]) {
+        rise.run(`RISE:${action}`);
+    }
+});
+
 test("chalkboard buttons stay hidden on entries after chalkboard is turned off", async (t) => {
     const metadata = { rise: { enable_chalkboard: true } };
     const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });
@@ -480,7 +566,42 @@ test("chalkboard buttons stay hidden on entries after chalkboard is turned off",
     assert.equal(shown(), 0);
 });
 
-test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
+test("re-entering on the slide shown at exit selects its code cell again", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide"), cell("x = 1", "", "code")],
+        metadata: { rise: { auto_select_timeout: 0 } },
+    });
+    t.after(rise.close);
+    rise.run("RISE:slideshow");
+    await rise.until(() => rise.cells[1].selected);
+    rise.run("RISE:slideshow");
+    rise.cells[1].unselect();
+    rise.cells[0].select();
+
+    rise.run("RISE:slideshow");
+    await rise.until(() => rise.cells[1].selected);
+
+    assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
+});
+
+test("exiting before a pending auto-select keeps the cell exit selected", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide"), cell("x = 1", "", "code")],
+        metadata: { rise: { auto_select_timeout: 50 } },
+    });
+    t.after(rise.close);
+    rise.run("RISE:slideshow");
+    // reveal's ready, which asks for the auto-select
+    await rise.idle(0);
+
+    rise.cells[0].select();
+    rise.run("RISE:slideshow");
+    await rise.idle(60);
+
+    assert.deepEqual(rise.cells.map((c) => c.selected), [true, false]);
+});
+
+test("a button fade pending at exit leaves the buttons of the next entry shown", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],
         metadata: { rise: { show_buttons_on_startup: false } },
@@ -488,21 +609,76 @@ test("show_buttons_on_startup false hides every RISE button on each entry", asyn
     t.after(rise.close);
     const { $ } = rise;
     $.fx.off = true;
-    // RISE adds these once chalkboard has started, and they outlive the slideshow
-    $('<div id="toggle-chalkboard"></div><div id="toggle-notes"></div>').appendTo("body");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
+    rise.run("RISE:slideshow");
+    t.mock.timers.tick(1000);
+    rise.run("RISE:slideshow");
+    rise.run("RISE:slideshow");
+    t.mock.timers.tick(1000);
+
+    assert.equal($("#help_b, #exit_b").filter((i, e) => $(e).css("display") !== "none").length, 2);
+});
+
+test("a reveal.js that fails to load returns to the notebook", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")], revealLoadFails: true });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+    await rise.idle(0);
+
+    assert.ok(!$("body").hasClass("rise-enabled"));
+    assert.equal($("#notebook-container section").length, 0);
+    assert.equal(rise.shortcutMap("command").w, undefined);
+});
+
+test("unknown reveal_shortcuts entries are skipped and the known ones still apply", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: {
+            rise: { reveal_shortcuts: { main: { tooglOverview: "x", toggleOverview: "shift-o" },
+                                        laser: { point: "l" } } },
+        },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+
+    const command = rise.shortcutMap("command");
+    assert.equal(command["shift-o"], "RISE:toggleOverview");
+    assert.equal(command.x, undefined);
+    assert.equal(command.l, undefined);
+});
+
+test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { show_buttons_on_startup: false, enable_chalkboard: true } },
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+    $.fx.off = true;
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const shown = () => Array.from($("#help_b, #exit_b, #toggle-chalkboard, #toggle-notes"))
         .filter((element) => $(element).css("display") !== "none")
         .map((element) => element.id)
         .sort();
+    // reveal starts on a timer, and RISE adds the chalkboard buttons once it has
+    const start = async () => {
+        t.mock.timers.tick(0);
+        await new Promise((resolve) => setImmediate(resolve));
+    };
 
     rise.run("RISE:slideshow");
+    await start();
     assert.deepEqual(shown(), ["exit_b", "help_b", "toggle-chalkboard", "toggle-notes"]);
     t.mock.timers.tick(2000);
     assert.deepEqual(shown(), []);
 
     rise.run("RISE:slideshow");
     rise.run("RISE:slideshow");
+    await start();
     t.mock.timers.tick(2000);
     assert.deepEqual(shown(), []);
 });
@@ -592,7 +768,10 @@ function helpKeys(dialog) {
 }
 
 test("the help dialog lists the slideshow shortcuts", async (t) => {
-    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true } },
+    });
     t.after(rise.close);
 
     rise.run("RISE:riseHelp");
@@ -603,6 +782,20 @@ test("the help dialog lists the slideshow shortcuts", async (t) => {
     for (const key of ["Space", "Shift", "Enter", "home", "end", "w", "t", "/", ",", "["]) {
         assert.ok(keys.includes(key), key);
     }
+});
+
+test("without chalkboard, its keys keep their Jupyter actions and its help is left out", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:riseHelp");
+
+    const command = rise.shortcutMap("command");
+    assert.equal(command.s, "jupyter-notebook:save-notebook");
+    assert.equal(command.q, "jupyter-notebook:close-pager");
+    assert.equal(command["["], undefined);
+    assert.ok(!helpKeys(rise.dialogs[0]).includes("["));
 });
 
 test("the help dialog shows a customized reveal shortcut instead of the default", async (t) => {
@@ -617,6 +810,35 @@ test("the help dialog shows a customized reveal shortcut instead of the default"
     const keys = helpKeys(rise.dialogs[0]);
     assert.ok(keys.includes("g"));
     assert.equal(keys.includes("home"), false);
+});
+
+test("the help dialog shows the configured slideshow key and the fullscreen help", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { shortcuts: { slideshow: "alt-q" } } },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:riseHelp");
+
+    const entries = Array.from(rise.dialogs[0].body.find("li"), (element) => element.textContent);
+    assert.ok(entries.includes("alt-q : enter/exit RISE"));
+    assert.ok(entries.includes("f : show fullscreen help"));
+    assert.ok(entries.includes("Right Arrow: right (note: Space preferred)"));
+});
+
+test("shortcut keys from metadata show in the help dialog as text", async (t) => {
+    const key = '<img src="x" onerror="window.injected = 1">';
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { reveal_shortcuts: { main: { toggleOverview: key } } } },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:riseHelp");
+
+    assert.equal(rise.dialogs[0].body.find("img").length, 0);
+    assert.ok(helpKeys(rise.dialogs[0]).includes(key));
 });
 
 test("every entry in the help dialog has a description", async (t) => {

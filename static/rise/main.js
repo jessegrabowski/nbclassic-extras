@@ -15,7 +15,8 @@ define([
   'base/js/utils',
   'services/config',
   'base/js/keyboard',
-], function(require, $, Jupyter, utils, configmod, keyboard) {
+  'base/js/security',
+], function(require, $, Jupyter, utils, configmod, keyboard, security) {
 
   "use strict";
 
@@ -76,8 +77,7 @@ define([
       overlay: undefined,
 
       // timeouts
-      // wait for that amont before calling ensure_focused on the
-      // selected cell
+      // wait for that amount before calling ensure_focused on the selected cell
       restore_timeout: 500,
       // wait for that amount before actually selected auto-selected fragment
       // when going too short, like 250, size of selected cell get odd
@@ -102,16 +102,13 @@ define([
       // see also the 'inherited' variable below in Revealer
       theme: 'simple',
       transition: 'linear',
-      // xxx there might be a need to tweak this one when set
-      // by the configurator, as e.g. 'false' or 'true' will result
-      // in a string and not a boolean
       slideNumber: true,
       width: "100%",
       height: "100%",
       controls: true,
       progress: true,
       history: true,
-      scroll: false,
+      scroll: true,
       center: true,
       margin: 0.1,
       minScale: 1.0, // we need this for codemirror to work right
@@ -161,24 +158,27 @@ define([
       });
   }
 
-  /*
-   * Version of get_cell_elements that will see cell divs at any depth in the HTML tree,
-   * allowing container divs, etc to be used without breaking notebook machinery.
-   * You'll need to make sure the cells are getting detected in the right order.
-   * NOTE: We use the Object prototype to workaround a firefox issue, check the following
-   * link to know more about the discussion leading to this use:
-   * https://github.com/damianavila/RISE/issues/117#issuecomment-127331816
-   */
-  Object.getPrototypeOf(Jupyter.notebook).get_cell_elements = function () {
-    return this.container.find("div.cell");
-  };
+  // the slide types that give a cell a role; '-' and '' only continue the current (sub)slide
+  const SLIDE_ROLES = ['slide', 'subslide', 'fragment', 'notes', 'skip'];
 
-  /* uniform way to access slide type, whether the slideshow metadata is set or not
-   * also sometimes slide_type is set to '-' by the toolbar
+  // set on each entry, so a notebook nobody prepared for slides shows one cell per slide
+  let untyped_cells_start_slides = false;
+
+  function notebookHasSlideRoles() {
+    return Jupyter.notebook.get_cells().some(
+      (cell) => SLIDE_ROLES.includes((cell.metadata.slideshow || {}).slide_type));
+  }
+
+  /* An untyped cell continues the current (sub)slide, unless no cell in the notebook has a role,
+   * in which case it starts a new slide. The Slideshow cell toolbar's '-', and the '' left by
+   * toggling a type off, always continue; both are returned as ''.
    */
   function get_slide_type(cell) {
     let slide_type = (cell.metadata.slideshow || {}).slide_type;
-    return ( (slide_type === undefined) || (slide_type == '-')) ? '' : slide_type;
+    if (slide_type === undefined || slide_type === null) {
+      return untyped_cells_start_slides ? 'slide' : '';
+    }
+    return (slide_type == '-') ? '' : slide_type;
   }
 
   function is_slide(cell)    {return get_slide_type(cell) == 'slide';}
@@ -187,6 +187,19 @@ define([
   function is_skip(cell)     {return get_slide_type(cell) == 'skip';}
   function is_notes(cell)    {return get_slide_type(cell) == 'notes';}
   function is_regular(cell)  {return get_slide_type(cell) == '';}
+
+  // a cell added during the slideshow appears on the slide being shown, which its type records;
+  // a pasted cell receives the copied cell's metadata after create.Cell, so the tag waits a tick
+  function tagCellsAddedInSlideshow() {
+    Jupyter.notebook.events.on('create.Cell', function(event, data) {
+      setTimeout(function() {
+        let metadata = data.cell.metadata;
+        if (current_entry !== null && (metadata.slideshow || {}).slide_type == null) {
+          metadata.slideshow = $.extend({}, metadata.slideshow, {slide_type: '-'});
+        }
+      }, 0);
+    });
+  }
 
   /* Use the slideshow metadata to rearrange cell DOM elements into the
    * structure expected by reveal.js
@@ -294,7 +307,7 @@ define([
      */
     for (let i=0; i < cells.length; i++) {
       let cell = cells[i];
-      // default is 'pinned' because this applies to the last cell
+      // the last cell, with no next cell, runs in place
       let tag = 'smart_exec_slide';
       for (let j = i+1; j < cells.length; j++) {
         let next_cell = cells[j];
@@ -323,15 +336,12 @@ define([
     return selected_cell_slide;
   }
 
-  // a sync still pending at exit would size the notebook container as a slide again
+  // timers still pending at exit would act on the notebook: size its container as a slide,
+  // select a cell from the slide just left, or hide the buttons of the next entry
   let pending_sync = null;
+  let pending_auto_select = null;
+  let pending_buttons_fade = null;
 
-  /* Set the #slide-x-y part of the URL to control where the slideshow will start.
-   * N.B. We do this instead of using Reveal.slide() after reveal initialises,
-   * because that leaves one slide clearly visible on screen for a moment before
-   * changing to the one we want. By changing the URL before setting up reveal,
-   * the slideshow really starts on the desired slide.
-   */
   function setStartingSlide(selected) {
 
     let start_slideshow = complete_config.start_slideshow_at;
@@ -343,13 +353,8 @@ define([
       Reveal.slide(0, 0);
     }
     setScrollingSlide();
-    // warkaround for #504
-    // when editing if you swap out of reveal, and then
-    // come back in, with 5.6 most of the time display 
-    // becomes empty or the contents is way too low
-    // this patch makes the situation much better,
-    // although it is clearly suboptimal to have 
-    // to resort to that sort of dirty patch
+    // a second sync once the cells have settled keeps the slide from showing empty or too low
+    // after re-entering, https://github.com/damianavila/RISE/issues/504
     pending_sync = setTimeout(()=>Reveal.sync(), complete_config.sync_timeout);
   }
 
@@ -365,7 +370,7 @@ define([
         .filter(function() {
           return $(this).height() > h;
         })
-        .css('height', 'calc(95vh)')
+        .css('height', '95vh')
         .css('overflow-y', 'scroll')
         .css('margin-top', '20px');
     }
@@ -378,32 +383,20 @@ define([
     }
   }
 
-  /* Setup a MutationObserver to call Reveal.sync when an output is generated.
-   * This fixes issue #188: https://github.com/damianavila/RISE/issues/188
+  /* Resync reveal when a cell's output changes the size of its slide, including the outputs of
+   * cells added during the slideshow; see https://github.com/damianavila/RISE/issues/188
    */
   let outputObserver = null;
   function setupOutputObserver() {
-    function mutationHandler(mutationRecords) {
-      mutationRecords.forEach(function(mutation) {
-        if (mutation.addedNodes && mutation.addedNodes.length) {
-          Reveal.sync();
-          setScrollingSlide();
-        }
-      });
-    }
-
-    let $output = $(".output");
-    let MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
-    outputObserver = new MutationObserver(mutationHandler);
-
-    let observerOptions = { childList: true,
-                            characterData: false,
-                            attributes: false,
-                            subtree: false
-                          };
-    $output.each(function () {
-      outputObserver.observe(this, observerOptions);
+    outputObserver = new MutationObserver(function(mutationRecords) {
+      let output_added = mutationRecords.some(
+        (record) => record.addedNodes.length && $(record.target).is('.output'));
+      if (output_added) {
+        Reveal.sync();
+        setScrollingSlide();
+      }
     });
+    outputObserver.observe($('div#notebook-container')[0], {childList: true, subtree: true});
   }
 
   function disconnectOutputObserver() {
@@ -412,29 +405,38 @@ define([
     }
   }
 
+  // the overlay settings can come from notebook metadata, so an untrusted notebook's markup is
+  // sanitized the way nbclassic sanitizes its outputs; a trusted notebook's is inserted as written
+  function metadataHtml(html) {
+    return Jupyter.notebook.trusted ? html : security.sanitize_html(html, true);
+  }
+
   function addHeaderFooterOverlay() {
     let overlay = complete_config.overlay;
-    let header =  complete_config.header;
-    let footer =  complete_config.footer;
-    let backimage =  complete_config.backimage;
-    // minimum styling to make these 3 things look
-    // like what their name says they should look
-    let header_style = "position: absolute; top: 0px;";
-    let footer_style = "position: absolute; bottom: 0px;";
-    let backimage_style = "width: 100%; height: 100%;";
+    let header = complete_config.header;
+    let footer = complete_config.footer;
+    let backimage = complete_config.backimage;
 
-    let overlay_body = "";
+    let overlay_div = $('<div/>').attr('id', 'rise-overlay');
     if (overlay) {
-      overlay_body = overlay;
+      overlay_div.append(metadataHtml(overlay));
     } else {
-      if (header)
-        overlay_body += `<div id='rise-header' style='${header_style}'>${header}</div>`;
-      if (backimage)
-        overlay_body += `<img id='rise-backimage' style='${backimage_style}' src='${backimage}' />`;
-      if (footer)
-        overlay_body += `<div id='rise-footer' style='${footer_style}'>${footer}</div>`;
+      // minimum styling to make these 3 things look like what their name says
+      if (header) {
+        overlay_div.append($('<div/>').attr('id', 'rise-header')
+                           .css({position: 'absolute', top: '0px'})
+                           .append(metadataHtml(header)));
+      }
+      if (backimage) {
+        overlay_div.append($('<img/>').attr({id: 'rise-backimage', src: backimage})
+                           .css({width: '100%', height: '100%'}));
+      }
+      if (footer) {
+        overlay_div.append($('<div/>').attr('id', 'rise-footer')
+                           .css({position: 'absolute', bottom: '0px'})
+                           .append(metadataHtml(footer)));
+      }
     }
-    let overlay_div = `<div id='rise-overlay'>${overlay_body}</div>`;
     $('div.reveal').append(overlay_div);
   }
 
@@ -444,11 +446,23 @@ define([
     // we enter reveal again
     $('div#rise-overlay').remove();
   }
-   
-  // reveal.js loads as an AMD module on the first entry, which also initializes it; later entries
-  // reconfigure the same deck
+
+  // reveal.js loads as an AMD module on the first entry; every entry initializes the deck and
+  // every exit destroys it, so plugins and listeners follow the config of the current entry
   let Reveal = null;
-  let reveal_initialized = false;
+  let deck_initialized = false;
+  // the slideshow keys are bound on entry, before reveal has loaded and started
+  let deck_started = false;
+
+  // identifies the slideshow on screen, null once exited, so a load or start that finishes after
+  // its slideshow has ended does nothing
+  let current_entry = null;
+  let last_entry = 0;
+
+  // reveal adds classes and attributes to #notebook and #notebook-container that destroy() leaves,
+  // and some (fade, progress) mean something else to Bootstrap
+  let notebook_classes = null;
+  let container_classes = null;
 
   // listeners RISE adds to reveal, removed on exit so re-entering does not stack a second set
   let reveal_listeners = [];
@@ -467,16 +481,13 @@ define([
 
   const RISE_BUTTONS = '#help_b,#exit_b,#toggle-chalkboard,#toggle-notes';
 
-  // the controls reveal creates directly inside its root element, div#notebook; notebook
-  // output can carry the same class names (a Bootstrap .progress bar, say)
-  function revealChrome() {
-    return $('div#notebook')
-      .children('.backgrounds, .progress, .controls, .slide-number, .speaker-notes, .pause-overlay')
-      .add('div#aria-status-div');
+  // built with attr(), so notebook metadata and file names cannot add attributes to the link
+  function stylesheet(href, id) {
+    return $('<link/>').attr({rel: 'stylesheet', href: href, id: id});
   }
 
   function toggleAllRiseButtons() {
-    $(RISE_BUTTONS).fadeToggle()
+    $(RISE_BUTTONS).fadeToggle();
   }
 
   function chalkboard() {
@@ -492,14 +503,13 @@ define([
   // `placement` is the chalkboard's toggleChalkboardButton or toggleNotesButton setting: false
   // leaves the button out, an object may set its left, bottom, top and right
   function addChalkboardButton(id, icon, handler, placement, default_left) {
-    if (placement === false || $(`#${id}`).length) {
+    if (placement === false) {
       return;
     }
     let position = (typeof placement === 'object') ? placement : {};
     $(`<div class="chalkboard-button" id="${id}"><a href="#"><i class="fa ${icon}"></i></a></div>`)
       .css({
-        position: 'absolute',
-        zIndex: 30,
+        position: 'fixed',
         fontSize: '24px',
         left: position.left || default_left,
         bottom: position.bottom || '30px',
@@ -517,16 +527,17 @@ define([
     let config = complete_config.chalkboard || {};
     addChalkboardButton('toggle-chalkboard', 'fa-pencil-square',
                         () => chalkboard().toggleChalkboard(), config.toggleChalkboardButton,
-                        '30px');
+                        '4em');
     addChalkboardButton('toggle-notes', 'fa-pencil',
-                        () => chalkboard().toggleNotesCanvas(), config.toggleNotesButton, '70px');
+                        () => chalkboard().toggleNotesCanvas(), config.toggleNotesButton, '7em');
   }
-  
+
   function Revealer(selected_slide) {
-    
-    // console.log(`complete_config: ${JSON.stringify(complete_config)}`);
-    
+    let entry = ++last_entry;
+    current_entry = entry;
     $('body').addClass("rise-enabled");
+    notebook_classes = $('div#notebook').attr('class') || '';
+    container_classes = $('div#notebook-container').attr('class') || '';
     // Prepare the DOM to start the slideshow
     $('div#header').hide();
     $('.end_space').hide();
@@ -539,13 +550,8 @@ define([
     // Available themes are in reveal.js/theme
     let theme = complete_config.theme;
     $('body').addClass(`theme-${theme}`);
-    let theme_path = `./reveal.js/theme/${theme}.css`;
-    $('head').prepend(
-      `<link rel="stylesheet" href="${require.toUrl(theme_path)}" id="theme" />`);
-    // Add reveal css
-    let main_path = "./reveal.js/reveal.css";
-    $('head').prepend(
-      `<link rel="stylesheet" href="${require.toUrl(main_path)}" id="revealcss" />`);
+    $('head').prepend(stylesheet(require.toUrl(`./reveal.js/theme/${theme}.css`), 'theme'));
+    $('head').prepend(stylesheet(require.toUrl('./reveal.js/reveal.css'), 'revealcss'));
 
     /* this policy of trying ./rise.css and then <notebook>.css
      * should be redefinable in the config
@@ -555,14 +561,9 @@ define([
     // remove extension if any
     let dot_index = name.lastIndexOf('.');
     let stem = (dot_index == -1) ? name : name.substr(0, dot_index);
-    // associated css
-    let name_css = `${stem}.css`;
-    // Attempt to load rise.css
-    $('head').append(
-      `<link rel="stylesheet" href="rise.css" id="rise-custom-css" />`);
-    // Attempt to load css with the same path as notebook
-    $('head').append(
-      `<link rel="stylesheet" href="${name_css}" id="rise-notebook-css" />`);
+    // Attempt to load rise.css, then css with the same path as the notebook
+    $('head').append(stylesheet('rise.css', 'rise-custom-css'));
+    $('head').append(stylesheet(`${encodeURIComponent(stem)}.css`, 'rise-notebook-css'));
 
 
     let enable_chalkboard = complete_config.enable_chalkboard;
@@ -570,39 +571,45 @@ define([
     if (enable_chalkboard) {
       // chalkboard is a plain script that defines window.RevealChalkboard
       modules.push('./reveal.js-chalkboard/plugin.js');
-      let chalkboard_css_path = './reveal.js-chalkboard/style.css';
       $('head').append(
-        `<link rel="stylesheet" href="${require.toUrl(chalkboard_css_path)}" id="chalkboardcss" />`);
+        stylesheet(require.toUrl('./reveal.js-chalkboard/style.css'), 'chalkboardcss'));
     }
+
+    // a slideshow that cannot load or start reveal returns to the notebook instead of staying
+    // half set up
+    let startFailed = function(error) {
+      console.error("RISE: could not start the slideshow", error);
+      if (entry === current_entry) {
+        revealMode();
+      }
+    };
 
     require(modules.map(require.toUrl), function(reveal, RevealNotes) {
       Reveal = reveal;
       // the slideshow may have been exited while reveal was loading
-      if (!$('body').hasClass('rise-enabled')) {
+      if (entry !== current_entry) {
         return;
       }
       // Full list of configuration options available here:
       // https://revealjs.com/config/
 
-      // all these settings are passed along to reveal as-is
-      // xxx it might be just better to copy the whole complete_config instead
-      // of selecting some names, which would allow users to transparently use
-      // all reveal's features
+      // the RISE settings passed to reveal as-is
       let inherited = ['controls', 'progress', 'history', 'width', 'height', 'margin',
                        'minScale', 'transition', 'slideNumber', 'center', 'help'];
 
       let options = {
 
-        // turn off reveal native help
-        help: false,
-
         // the URL hash names only the slide, and the deck never switches to reveal's scroll
         // view in a narrow window
         fragmentInURL: false,
         scrollActivationWidth: null,
+        // cells stay editable in the slideshow, so returning to the tab keeps the editor focused
+        focusBodyOnPageVisibilityChange: false,
+        // the pointer stays visible over editable cells; reveal's hiding timer would also outlive
+        // destroy() and hide it over the notebook after exit
+        hideInactiveCursor: false,
 
-        // key bindings configurable are now defined in the reveal_default_bindings dict -
-        // this should only be used to unbind keys
+        // keys RISE binds are in REVEAL_ACTIONS; this only unbinds reveal's own
         // note that toggleAllRiseButtons is bound to comma here as jupyter does not
         // allow to bind anything to comma!
         keyboard: {
@@ -635,25 +642,15 @@ define([
       }
 
       if (enable_chalkboard) {
+        // each entry starts a new chalkboard, which reloads drawings kept in session storage
+        let storage = `rise-chalkboard:${Jupyter.notebook.notebook_path}`;
         options.chalkboard = $.extend(
-          true, {}, complete_config.chalkboard, {keyBindings: CHALKBOARD_KEYS_OFF});
+          true, {storage: storage}, complete_config.chalkboard, {keyBindings: CHALKBOARD_KEYS_OFF});
         options.plugins.push(window.RevealChalkboard);
       }
 
-      let started;
-      if (reveal_initialized) {
-        // the previous exit hid these inline; reveal sets the display of the ones it
-        // manages again when configured, the others would stay hidden
-        revealChrome().css('display', '');
-        // chalkboard buttons outlive the slideshow, so start each entry from shown, or hidden
-        // when chalkboard has since been turned off
-        $('#toggle-chalkboard, #toggle-notes').toggle(Boolean(enable_chalkboard));
-        Reveal.configure(options);
-        started = Promise.resolve();
-      } else {
-        started = Reveal.initialize(options);
-        reveal_initialized = true;
-      }
+      let started = Reveal.initialize(options);
+      deck_initialized = true;
 
       addRevealListener('ready', function(event) {
         Unselecter();
@@ -676,27 +673,26 @@ define([
         autoSelectHook();
       });
 
-      // Sync when an output is generated.
-      setupOutputObserver();
       addHeaderFooterOverlay();
 
       started.then(function() {
         // the slideshow may have been exited before reveal finished starting
-        if (!$('body').hasClass('rise-enabled')) {
-          Reveal.removeEventListeners();
+        if (entry !== current_entry) {
           return;
         }
+        deck_started = true;
         setStartingSlide(selected_slide);
+        setupOutputObserver();
         if (enable_chalkboard) {
           addChalkboardButtons();
         }
-      });
+      }).catch(startFailed);
 
       if (! complete_config.show_buttons_on_startup) {
         /* safer, and nicer too, to wait for reveal extensions to start */
-        setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
+        pending_buttons_fade = setTimeout(() => $(RISE_BUTTONS).fadeOut(), 2000);
       }
-    });
+    }, startFailed);
   }
 
   function Unselecter(){
@@ -706,16 +702,11 @@ define([
     }
   }
 
-  function fixCellHeight(){
-    // Let's start with all the cell unselected, the unselect the current selected one
-    let scell = Jupyter.notebook.get_selected_cell();
-    scell.unselect();
-    // This select/unselect code cell triggers the "correct" heigth in the codemirror instance
-    let cells = Jupyter.notebook.get_cells();
-    for (let cell of cells){
+  // CodeMirror sized its editors inside the slides; size them again for the notebook
+  function refreshEditors() {
+    for (let cell of Jupyter.notebook.get_cells()) {
       if (cell.cell_type === "code") {
-        cell.select();
-        cell.unselect();
+        cell.code_mirror.refresh();
       }
     }
   }
@@ -743,94 +734,81 @@ define([
       Jupyter.notebook.execute_cell_and_select_below();
     }
   }
-  
-  // action for reveal.js and reveal.js plug-in bindings
-  // this a the dictionary structure as generated by nbextension_configurator 
-  // with the corresponding API calls to RISE/reveal.js and/or its plug-ins 
-  let reveal_actions = {
-      'main': {   // RISE/reveal.js API calls
-        'firstSlide': () => Reveal.slide(0), // jump to first slide
-        'lastSlide': () => Reveal.slide( Number.MAX_VALUE ),  // jump to last slide
-        'toggleOverview': () => Reveal.toggleOverview(),  // toggle overview
-        'toggleAllRiseButtons': toggleAllRiseButtons,  // show/hide buttons
-        'fullscreenHelp': fullscreenHelp,  // show fullscreen help
-        'riseHelp': riseHelp,  // '?' show our help
-      },
-      'chalkboard': { // API calls for RevealChalkboard plug-in
-        'clear': () => chalkboard().clear(), // clear full size chalkboard
-        'reset': () => chalkboard().reset(), // reset chalkboard data on current slide
-        'toggleChalkboard': () => chalkboard().toggleChalkboard(),  // toggle full size chalkboard
-        'toggleNotesCanvas': () => chalkboard().toggleNotesCanvas(), // toggle notes (slide-local)
-        'colorNext': () => chalkboard().colorNext(), // next color
-        'colorPrev': () => chalkboard().colorPrev(), // previous color
-        'download': () => chalkboard().download()  //  download recorded chalkboard drawing
-      },
-      'notes': { // API calls for RevealNotes plug-in
-          'openNotes' : () => Reveal.getPlugin('notes').open(), // open speaker notes window
-      },
+
+  /*
+   * The slideshow actions RISE registers as RISE:<action>, by module as the reveal_shortcuts
+   * setting names them. `key` is the default command-mode shortcut inside the slideshow; an
+   * action with an empty key is bound only when reveal_shortcuts gives it one.
+   */
+  // an action that needs the deck does nothing until it has started
+  function onDeck(run) {
+    return () => {
+      if (deck_started) {
+        run();
+      }
+    };
   }
-  
-  let reveal_helpstr = {
-      'main': {   // RISE/reveal.js API calls
-        'firstSlide': 'jump to first slide',
-        'lastSlide': 'jump to last slide',
-        'toggleOverview': 'toggle overview',
-        'toggleAllRiseButtons': 'show/hide buttons',
-        'fullscreenHelp': 'show fullscreen help',
-        'riseHelp': 'show this help dialog'
-      },
-      'chalkboard': { // API calls for RevealChalkboard plug-in
-        'clear': 'clear full size chalkboard',
-        'reset': 'reset chalkboard data on current slide',
-        'toggleChalkboard': 'toggle full size chalkboard',
-        'toggleNotesCanvas': 'toggle notes (slide-local)',
-        'colorNext': 'cycle to next pen color',
-        'colorPrev': 'cycle to previous pen color',
-        'download': 'download recorded chalkboard drawing'
-      },
-      'notes': { // API calls for RevealNotes plug-in
-          'openNotes' : 'open speaker notes window'
-      },
+
+  function onChalkboard(method) {
+    return onDeck(() => {
+      if (chalkboard()) {
+        chalkboard()[method]();
+      }
+    });
   }
-  
-  // need to check, if we can fetch the default bindings from rise.yaml (nbconfig)
-  let reveal_default_bindings = {
-      'main': {
-        'firstSlide': 'home',
-        'lastSlide': 'end',             // keycode 35
-        'toggleOverview': 'w',          // keycode 87
-        //'toggleAllRiseButtons': 'm',  // keycode 188 (",") is not allowed in jupyter! using m instead
-        'fullscreenHelp': 'f',          // keycode 70
-        'riseHelp': 'shift-/',          // what nbclassic calls the ? key
-      },
-      'chalkboard': {
-        'clear': 'minus',               // keycode 189 (and 173 on firefox)
-        'reset': '=',                   // keycode 187 (and 61 on firefox)
-        'toggleChalkboard': '[',        // keycode 219
-        'toggleNotesCanvas': ']',       // keycode 221
-        'colorPrev': 'q',               // keycode 81
-        'colorNext': 's',               // kecode 83
-        'download': '\\'                // keycode 220
-      },
-      'notes': { // API calls for RevealNotes plug-in
-          'openNotes' : 't'             // keycode 84
-      },
-  }
-  
-  // update reveal bindings with custom key codes
-  function updateRevealBindings(default_bindings){
-    let bindings = $.extend(true, {}, default_bindings);
-    let custom_shortcuts = complete_config.reveal_shortcuts;
-    if (custom_shortcuts) {
-      for (const module of Object.keys(custom_shortcuts)){
-        for (const action of Object.keys(custom_shortcuts[module])){
-           bindings[module][action] = custom_shortcuts[module][action];
+
+  const REVEAL_ACTIONS = {
+    main: {
+      firstSlide: {key: 'home', help: 'jump to first slide', run: onDeck(() => Reveal.slide(0))},
+      lastSlide: {key: 'end', help: 'jump to last slide',
+                  run: onDeck(() => Reveal.slide(Number.MAX_VALUE))},
+      toggleOverview: {key: 'w', help: 'toggle overview',
+                       run: onDeck(() => Reveal.toggleOverview())},
+      // comma, its natural key, cannot be bound in Jupyter; reveal's own keyboard handles it
+      toggleAllRiseButtons: {key: '', help: 'show/hide buttons', run: toggleAllRiseButtons},
+      fullscreenHelp: {key: 'f', help: 'show fullscreen help', run: fullscreenHelp},
+      // nbclassic reports the ? key as shift-/
+      riseHelp: {key: 'shift-/', help: 'show this help dialog', run: riseHelp},
+    },
+    chalkboard: {
+      clear: {key: 'minus', help: 'clear full size chalkboard', run: onChalkboard('clear')},
+      reset: {key: '=', help: 'reset chalkboard data on current slide', run: onChalkboard('reset')},
+      toggleChalkboard: {key: '[', help: 'toggle full size chalkboard',
+                         run: onChalkboard('toggleChalkboard')},
+      toggleNotesCanvas: {key: ']', help: 'toggle notes (slide-local)',
+                          run: onChalkboard('toggleNotesCanvas')},
+      colorNext: {key: 's', help: 'cycle to next pen color', run: onChalkboard('colorNext')},
+      colorPrev: {key: 'q', help: 'cycle to previous pen color', run: onChalkboard('colorPrev')},
+      download: {key: '\\', help: 'download recorded chalkboard drawing',
+                 run: onChalkboard('download')},
+    },
+    notes: {
+      openNotes: {key: 't', help: 'open speaker notes window',
+                  run: onDeck(() => Reveal.getPlugin('notes').open())},
+    },
+  };
+
+  // {module: {action: key}}: the default keys with the reveal_shortcuts setting applied
+  function revealBindings() {
+    let bindings = {};
+    for (const module of Object.keys(REVEAL_ACTIONS)) {
+      bindings[module] = {};
+      for (const action of Object.keys(REVEAL_ACTIONS[module])) {
+        bindings[module][action] = REVEAL_ACTIONS[module][action].key;
+      }
+    }
+    let custom_shortcuts = complete_config.reveal_shortcuts || {};
+    for (const module of Object.keys(custom_shortcuts)) {
+      for (const action of Object.keys(custom_shortcuts[module])) {
+        if (bindings[module] === undefined || bindings[module][action] === undefined) {
+          console.warn(`RISE: ignoring reveal_shortcuts.${module}.${action}, an unknown action`);
+          continue;
         }
+        bindings[module][action] = custom_shortcuts[module][action];
       }
     }
     return bindings;
   }
-  
 
   // [shortcut manager, key, previous action] for every binding the slideshow changed
   let replaced_shortcuts = [];
@@ -872,11 +850,15 @@ define([
     let edit_shortcuts = Jupyter.keyboard_manager.edit_shortcuts;
 
     if (mode === 'reveal_mode') {
-      let reveal_bindings = updateRevealBindings(reveal_default_bindings);
+      let reveal_bindings = revealBindings();
       rebind(command_shortcuts, "shift-enter", "RISE:smart-exec");
       rebind(edit_shortcuts, "shift-enter", "RISE:smart-exec");
-      // add all reveal.js and plugin bindings to jupyter
+      // add all reveal.js and plugin bindings to jupyter; chalkboard keys stay Jupyter's own
+      // (s saves, q closes the pager) unless chalkboard is on
       for (const module of Object.keys(reveal_bindings)){
+        if (module === 'chalkboard' && !complete_config.enable_chalkboard) {
+          continue;
+        }
         for (const action of Object.keys(reveal_bindings[module])){
           const key = reveal_bindings[module][action];
           if (key) {
@@ -908,30 +890,16 @@ define([
    * unbound when it is empty.
    */
   function shortcutRepr(shortcuts){
-    
-    let key_str = "";
-    let first_entry = true;
-    
-    if (shortcuts.length > 0){
-      for (const key of shortcuts.split(",")){
-        if (!first_entry){
-          key_str += ",<kbd>" + key + "</kbd>";
-          
-        } else {
-          key_str += "<kbd>" + key + "</kbd>";
-          first_entry = false;
-        }
-      }
-    } else {
-      key_str += "<em>unbound</em>";
+    if (!shortcuts) {
+      return "<em>unbound</em>";
     }
-    return key_str;
+    // keys can come from notebook metadata, so they are escaped as text
+    return shortcuts.split(",").map((key) => $('<kbd/>').text(key)[0].outerHTML).join(",");
   }
 
-  
   /*
    * Creates a list item string for help dialog
-   * 
+   *
    * Args:
    * shortcut_str = string representation of keyboard shortcut(s)
    * help_str = help text to be shown for item
@@ -939,63 +907,45 @@ define([
   function helpListItem(shortcut_str, help_str){
     return `<li>${shortcutRepr(shortcut_str)} : ${help_str}</li>`;
   }
-  
-  function riseHelp() {
-    let jupyter_keys;
-    let reveal_keys;
-    let cb_keys;
-    let no_keys;
-    
-    //check if custom bindings for registered jupyter calls are defined
-    if (typeof complete_config.shortcuts !== 'undefined'){
-      jupyter_keys = complete_config.shortcuts;
-    }
-    else{
-      jupyter_keys = {};
-    }
 
-    let updated_keybindings = updateRevealBindings(reveal_default_bindings);
-    
-    //console.log(`updated bindings: ${JSON.stringify(updated_keybindings)}`);
-    
-    reveal_keys = updated_keybindings['main'];
-    cb_keys = updated_keybindings['chalkboard'];
-    no_keys = updated_keybindings['notes'];
-    let reveal_help = reveal_helpstr['main'];
-    let cb_help = reveal_helpstr['chalkboard'];
-    let no_help= reveal_helpstr['notes'];
-    
+  function riseHelp() {
+    let bindings = revealBindings();
+    let item = (module, action) =>
+        helpListItem(bindings[module][action], REVEAL_ACTIONS[module][action].help);
+
     let message = $('<div/>').append(
       $("<p/></p>").addClass('dialog').html(
         "<ul>" +
-          helpListItem(reveal_keys.riseHelp, reveal_help.riseHelp) +
-          "<li><kbd>Alt</kbd>+<kbd>r</kbd>: enter/exit RISE</li>" +
+          item('main', 'riseHelp') +
+          helpListItem(complete_config.shortcuts.slideshow, 'enter/exit RISE') +
           "<li><kbd>Space</kbd>: next</li>" +
           "<li><kbd>Shift</kbd>+<kbd>Space</kbd>: previous</li>" +
           "<li><kbd>Shift</kbd>+<kbd>Enter</kbd>: eval and select next cell if visible</li>" +
-          helpListItem(reveal_keys.firstSlide, reveal_help.firstSlide) +
-          helpListItem(reveal_keys.lastSlide, reveal_help.lastSlide) +
-          helpListItem(reveal_keys.toggleOverview, reveal_help.toggleOverview) +
-          helpListItem(no_keys.openNotes, no_help.openNotes) +
-          `<li><kbd>,</kbd>: ${reveal_help.toggleAllRiseButtons}</li>` +
+          item('main', 'firstSlide') +
+          item('main', 'lastSlide') +
+          item('main', 'toggleOverview') +
+          item('main', 'fullscreenHelp') +
+          item('notes', 'openNotes') +
+          `<li><kbd>,</kbd>: ${REVEAL_ACTIONS.main.toggleAllRiseButtons.help}</li>` +
           "<li><kbd>/</kbd>: black screen</li>" +
           "<li><strong>less useful:</strong>" +
           "<ul>" +
           "<li><kbd>PgUp</kbd>: up</li>" +
           "<li><kbd>PgDn</kbd>: down</li>" +
-          "<li><kbd>Left Arrow</kbd>: left <em>(note: Space preferred)</em></li>" +
-          "<li><kbd>Right Arrow</kbd>: right <em>(note: Shift Space preferred)</em></li>" +
+          "<li><kbd>Left Arrow</kbd>: left <em>(note: Shift Space preferred)</em></li>" +
+          "<li><kbd>Right Arrow</kbd>: right <em>(note: Space preferred)</em></li>" +
           "</ul>" +
-          "<li><strong>with chalkboard enabled:</strong>" +
-          "<ul>" +
-          helpListItem(cb_keys.toggleChalkboard, cb_help.toggleChalkboard) +
-          helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvas) +
-          helpListItem(cb_keys.colorNext, cb_help.colorNext) +
-          helpListItem(cb_keys.colorPrev, cb_help.colorPrev) +
-          helpListItem(cb_keys.download, cb_help.download) +
-          helpListItem(cb_keys.reset, cb_help.reset) +
-          helpListItem(cb_keys.clear, cb_help.clear) +
-          "</ul>" +
+          (complete_config.enable_chalkboard ?
+           "<li><strong>chalkboard:</strong>" +
+           "<ul>" +
+           item('chalkboard', 'toggleChalkboard') +
+           item('chalkboard', 'toggleNotesCanvas') +
+           item('chalkboard', 'colorNext') +
+           item('chalkboard', 'colorPrev') +
+           item('chalkboard', 'download') +
+           item('chalkboard', 'reset') +
+           item('chalkboard', 'clear') +
+           "</ul>" : "") +
           "</ul>" +
           "<b>NOTE</b>: of course you have to use these shortcuts <b>in command mode.</b>"
       )
@@ -1052,39 +1002,41 @@ define([
 
   }
 
+  // replaces the slide's history entry, so exiting adds none of its own
   function removeHash() {
-    history.pushState("", document.title, window.location.pathname
-                      + window.location.search);
+    history.replaceState(null, "", window.location.pathname + window.location.search);
   }
 
   function Remover() {
-    // before its first start finishes, reveal has no input handlers to unbind yet
-    if (Reveal && Reveal.isReady()) {
-      Reveal.configure({minScale: 1.0});
-      Reveal.removeEventListeners();
+    current_entry = null;
+    deck_started = false;
+    if (deck_initialized) {
+      // the chalkboard saves drawings a second after the last stroke; the next entry reloads them
+      if (chalkboard()) {
+        chalkboard().updateStorage();
+      }
+      Reveal.destroy();
+      deck_initialized = false;
     }
     clearTimeout(pending_sync);
+    clearTimeout(pending_auto_select);
+    clearTimeout(pending_buttons_fade);
     removeRevealListeners();
     $('body').removeClass("rise-enabled");
     let theme = complete_config.theme;
     $('body').removeClass(`theme-${theme}`);
     $('div#header').show();
 
-    $('div#notebook').removeClass("reveal");
-    // woekaround to fix fade class conflicting between notebook and reveal css...
-    if ($('div#notebook').hasClass('fade')) { $('div#notebook').removeClass("fade"); };
-    $('div#notebook-container').removeClass("slides");
-    $('div#notebook-container').css('width','');
-    $('div#notebook-container').css('height','');
-    $('div#notebook-container').css('zoom','');
+    $('div#notebook').attr('class', notebook_classes).removeAttr('role');
+    $('div#notebook-container').attr('class', container_classes);
+    // the chalkboard plugin has no destroy(); the next entry's chalkboard creates its own
+    $('#notescanvas, #chalkboard, #toggle-chalkboard, #toggle-notes').remove();
 
     $('#theme').remove();
     $('#revealcss').remove();
     $('#chalkboardcss').remove();
     $('#rise-custom-css').remove();
     $('#rise-notebook-css').remove();
-
-    revealChrome().hide();
 
     let cells = Jupyter.notebook.get_cells();
     for (let cell of cells) {
@@ -1115,14 +1067,6 @@ define([
     the first slide however may be different as the first cell may be a fragment
     which I chose not to support for now
     bottom line: is fragments also starts at 0
-
-    ---------- historical note
-
-    in a previous implementation - for traditional notebooks -
-    we used to get slide and subslide from window.location.href
-    however this in jupyter lab may be no longer possible
-
-    in addition this is the way to go for getting info on the current fragment
   */
   function reveal_current_position() {
     // reveal shows nothing until its first start finishes
@@ -1170,7 +1114,7 @@ define([
     let result = null;
 
     let cells = notebook.get_cells();
-    for (let index in cells) {
+    for (let index = 0; index < cells.length; index++) {
       let cell = cells[index];
       // ignore skip cells no matter what
       if (is_skip(cell) || is_notes(cell))
@@ -1287,31 +1231,20 @@ define([
       {help   : 'output RISE configuration in console, for debugging mostly',
        handler: showConfig},
       "rise-dump-config", "RISE");
-    
-    let reveal_bindings = updateRevealBindings(reveal_default_bindings);
-    // register all reveal.js actions for keyboard bindings
-    for (const module of Object.keys(reveal_bindings)){
-      for (const action of Object.keys(reveal_bindings[module])){
-        let api_call = reveal_actions[module][action];
-        actions.register({
-          help: reveal_helpstr[module][action], 
-          handler: api_call},
-          action, "RISE");
-        // console.log(`Registered jupyter action \"${action}\" to API call: ${api_call}`);
+
+    for (const module of Object.keys(REVEAL_ACTIONS)) {
+      for (const [action, spec] of Object.entries(REVEAL_ACTIONS[module])) {
+        actions.register({help: spec.help, handler: spec.run}, action, "RISE");
       }
     }
-    
   }
 
 
   // the entrypoint - call this to enter or exit reveal mode
   function revealMode() {
-    // We search for a class tag in the maintoolbar to check if reveal mode is "on".
-    // If the tag exits, we exit. Otherwise, we enter the reveal mode.
-    let tag = $('#maintoolbar').hasClass('reveal_tagging');
-
-    if (!tag) {
+    if (current_entry === null) {
       rebuildConfig();
+      untyped_cells_start_slides = !notebookHasSlideRoles();
       // Preparing the new reveal-compatible structure
       let selected_slide = markupSlides($('div#notebook-container'));
       // Adding the reveal stuff
@@ -1320,7 +1253,6 @@ define([
       setupKeys("reveal_mode");
       buttonExit();
       buttonHelp();
-      $('#maintoolbar').addClass('reveal_tagging');
     } else {
       // first use current selection if relevant, the first cell in the visible slide otherwise
       let current_cell_index = Jupyter.notebook.get_selected_index();
@@ -1331,9 +1263,7 @@ define([
       setupKeys("notebook_mode");
       $('#exit_b').remove();
       $('#help_b').remove();
-      $('#maintoolbar').removeClass('reveal_tagging');
-      // Workaround... should be a better solution. Need to investigate codemirror
-      fixCellHeight();
+      refreshEditors();
       // select and focus on current cell
       Jupyter.notebook.select(current_cell_index);
       // Need to delay the action a little bit so it actually focus the selected slide
@@ -1355,7 +1285,9 @@ define([
     }
 
     let auto_select_fragment = complete_config.auto_select_fragment;
-    setTimeout(function(){
+    // ready and the starting slide's slidechanged both ask; the later request wins
+    clearTimeout(pending_auto_select);
+    pending_auto_select = setTimeout(function(){
       let current_cell_index = reveal_cell_index(
         Jupyter.notebook, cell_type, auto_select_fragment);
       // select and focus on current cell
@@ -1379,7 +1311,6 @@ define([
       let shortcut = shortcuts[action_name];
       // ignore if shortcut is set to an empty string
       if (shortcut) {
-        // console.log(`RISE: adding shortcut ${shortcut} for RISE:${action_name}`);
         Jupyter.notebook.keyboard_manager.command_shortcuts.add_shortcut(
           shortcut, `RISE:${action_name}`);
       }
@@ -1402,11 +1333,11 @@ define([
       .appendTo('head');
 
     configLoaded()
-    //      .then(showConfig)
       .then(registerJupyterActions)
       .then(addButtonsAndShortcuts)
+      .then(tagCellsAddedInSlideshow)
       .then(enterSlideshowInSpeakerView)
-    ;
+      .catch((error) => console.error("RISE: setup failed", error));
 
   }
 
