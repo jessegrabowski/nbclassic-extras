@@ -1924,13 +1924,13 @@ const initChalkboard = function ( Reveal ) {
 			}
 
 			storage = [ {
-					width: Reveal.getConfig().width,
-					height: Reveal.getConfig().height,
+					width: drawingCanvas[ 0 ].width - 2 * drawingCanvas[ 0 ].xOffset,
+					height: drawingCanvas[ 0 ].height - 2 * drawingCanvas[ 0 ].yOffset,
 					data: []
 				},
 				{
-					width: Reveal.getConfig().width,
-					height: Reveal.getConfig().height,
+					width: drawingCanvas[ 1 ].width,
+					height: drawingCanvas[ 1 ].height,
 					data: []
 				}
 			];

@@ -31,6 +31,21 @@ test("downloaded drawings are sized to the canvases, not reveal's slide size", a
     assert.deepEqual([board.width, board.height], [innerWidth, innerHeight]);
 });
 
+test("resetting all drawings keeps them sized to the canvases", async (t) => {
+    const plugin = loadChalkboard();
+    t.after(plugin.close);
+    const { innerWidth, innerHeight } = plugin.window;
+    plugin.window.confirm = () => true;
+
+    plugin.window.RevealChalkboard.resetAll();
+    plugin.window.RevealChalkboard.download();
+
+    const [blob] = plugin.downloads;
+    const [notes, board] = JSON.parse(await blob.text());
+    assert.deepEqual([notes.width, notes.height], [innerWidth, innerHeight]);
+    assert.deepEqual([board.width, board.height], [innerWidth, innerHeight]);
+});
+
 // Chalk texture comes from clearRect patches cut into a chalk stroke on the chalkboard.
 function chalkTexturePatches(chalkEffect) {
     let patches = 0;

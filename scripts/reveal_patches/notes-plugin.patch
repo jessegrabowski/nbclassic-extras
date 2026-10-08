@@ -1,15 +1,16 @@
 --- a/reveal.js/plugin/notes.js
 +++ b/reveal.js/plugin/notes.js
-@@ -236,6 +236,12 @@
- 					line-height: 1.4;
+@@ -237,6 +237,13 @@
  					font-size: 1.2em;
  				}
-+
+ 
 +			/* Jupyter cells shown as notes keep only their rendered output */
++			.speaker-controls-notes .input_prompt,
 +			.speaker-controls-notes .inner_cell > .ctb_hideshow,
 +			.speaker-controls-notes .inner_cell > .input_area {
 +				display: none;
 +			}
- 
++
  			/* Layout selector\xA0*/
  			#speaker-layout {
+ 				position: absolute;
