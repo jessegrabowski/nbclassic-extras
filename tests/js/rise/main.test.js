@@ -739,6 +739,35 @@ test("the help dialog shows a customized reveal shortcut instead of the default"
     assert.equal(keys.includes("home"), false);
 });
 
+test("the help dialog shows the configured slideshow key and the fullscreen help", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { shortcuts: { slideshow: "alt-q" } } },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:riseHelp");
+
+    const entries = Array.from(rise.dialogs[0].body.find("li"), (element) => element.textContent);
+    assert.ok(entries.includes("alt-q : enter/exit RISE"));
+    assert.ok(entries.includes("f : show fullscreen help"));
+    assert.ok(entries.includes("Right Arrow: right (note: Space preferred)"));
+});
+
+test("shortcut keys from metadata show in the help dialog as text", async (t) => {
+    const key = '<img src="x" onerror="window.injected = 1">';
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { reveal_shortcuts: { main: { toggleOverview: key } } } },
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:riseHelp");
+
+    assert.equal(rise.dialogs[0].body.find("img").length, 0);
+    assert.ok(helpKeys(rise.dialogs[0]).includes(key));
+});
+
 test("every entry in the help dialog has a description", async (t) => {
     const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
     t.after(rise.close);

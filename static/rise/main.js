@@ -860,27 +860,13 @@ define([
    * unbound when it is empty.
    */
   function shortcutRepr(shortcuts){
-    
-    let key_str = "";
-    let first_entry = true;
-    
-    if (shortcuts.length > 0){
-      for (const key of shortcuts.split(",")){
-        if (!first_entry){
-          key_str += ",<kbd>" + key + "</kbd>";
-          
-        } else {
-          key_str += "<kbd>" + key + "</kbd>";
-          first_entry = false;
-        }
-      }
-    } else {
-      key_str += "<em>unbound</em>";
+    if (!shortcuts) {
+      return "<em>unbound</em>";
     }
-    return key_str;
+    // keys can come from notebook metadata, so they are escaped as text
+    return shortcuts.split(",").map((key) => $('<kbd/>').text(key)[0].outerHTML).join(",");
   }
 
-  
   /*
    * Creates a list item string for help dialog
    * 
@@ -893,60 +879,42 @@ define([
   }
   
   function riseHelp() {
-    let jupyter_keys;
-    let reveal_keys;
-    let cb_keys;
-    let no_keys;
-    
-    //check if custom bindings for registered jupyter calls are defined
-    if (typeof complete_config.shortcuts !== 'undefined'){
-      jupyter_keys = complete_config.shortcuts;
-    }
-    else{
-      jupyter_keys = {};
-    }
+    let bindings = revealBindings();
+    let item = (module, action) =>
+        helpListItem(bindings[module][action], REVEAL_ACTIONS[module][action].help);
 
-    let updated_keybindings = revealBindings();
-    reveal_keys = updated_keybindings['main'];
-    cb_keys = updated_keybindings['chalkboard'];
-    no_keys = updated_keybindings['notes'];
-    let help = (module) => Object.fromEntries(Object.entries(REVEAL_ACTIONS[module])
-                                              .map(([action, spec]) => [action, spec.help]));
-    let reveal_help = help('main');
-    let cb_help = help('chalkboard');
-    let no_help = help('notes');
-    
     let message = $('<div/>').append(
       $("<p/></p>").addClass('dialog').html(
         "<ul>" +
-          helpListItem(reveal_keys.riseHelp, reveal_help.riseHelp) +
-          "<li><kbd>Alt</kbd>+<kbd>r</kbd>: enter/exit RISE</li>" +
+          item('main', 'riseHelp') +
+          helpListItem(complete_config.shortcuts.slideshow, 'enter/exit RISE') +
           "<li><kbd>Space</kbd>: next</li>" +
           "<li><kbd>Shift</kbd>+<kbd>Space</kbd>: previous</li>" +
           "<li><kbd>Shift</kbd>+<kbd>Enter</kbd>: eval and select next cell if visible</li>" +
-          helpListItem(reveal_keys.firstSlide, reveal_help.firstSlide) +
-          helpListItem(reveal_keys.lastSlide, reveal_help.lastSlide) +
-          helpListItem(reveal_keys.toggleOverview, reveal_help.toggleOverview) +
-          helpListItem(no_keys.openNotes, no_help.openNotes) +
-          `<li><kbd>,</kbd>: ${reveal_help.toggleAllRiseButtons}</li>` +
+          item('main', 'firstSlide') +
+          item('main', 'lastSlide') +
+          item('main', 'toggleOverview') +
+          item('main', 'fullscreenHelp') +
+          item('notes', 'openNotes') +
+          `<li><kbd>,</kbd>: ${REVEAL_ACTIONS.main.toggleAllRiseButtons.help}</li>` +
           "<li><kbd>/</kbd>: black screen</li>" +
           "<li><strong>less useful:</strong>" +
           "<ul>" +
           "<li><kbd>PgUp</kbd>: up</li>" +
           "<li><kbd>PgDn</kbd>: down</li>" +
-          "<li><kbd>Left Arrow</kbd>: left <em>(note: Space preferred)</em></li>" +
-          "<li><kbd>Right Arrow</kbd>: right <em>(note: Shift Space preferred)</em></li>" +
+          "<li><kbd>Left Arrow</kbd>: left <em>(note: Shift Space preferred)</em></li>" +
+          "<li><kbd>Right Arrow</kbd>: right <em>(note: Space preferred)</em></li>" +
           "</ul>" +
           (complete_config.enable_chalkboard ?
            "<li><strong>chalkboard:</strong>" +
            "<ul>" +
-           helpListItem(cb_keys.toggleChalkboard, cb_help.toggleChalkboard) +
-           helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvas) +
-           helpListItem(cb_keys.colorNext, cb_help.colorNext) +
-           helpListItem(cb_keys.colorPrev, cb_help.colorPrev) +
-           helpListItem(cb_keys.download, cb_help.download) +
-           helpListItem(cb_keys.reset, cb_help.reset) +
-           helpListItem(cb_keys.clear, cb_help.clear) +
+           item('chalkboard', 'toggleChalkboard') +
+           item('chalkboard', 'toggleNotesCanvas') +
+           item('chalkboard', 'colorNext') +
+           item('chalkboard', 'colorPrev') +
+           item('chalkboard', 'download') +
+           item('chalkboard', 'reset') +
+           item('chalkboard', 'clear') +
            "</ul>" : "") +
           "</ul>" +
           "<b>NOTE</b>: of course you have to use these shortcuts <b>in command mode.</b>"
