@@ -208,6 +208,21 @@ CONFIG_LAYERS.forEach(([layerName, layerTheme], top) => {
     });
 });
 
+test("the theme and notebook name land in stylesheet links as plain URLs", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { theme: 'sky" onload="window.injected = 1' } },
+        notebookName: 'talk "one" #2.ipynb',
+    });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.equal($("link[onload]").length, 0);
+    assert.equal($("link#rise-notebook-css").attr("href"), "talk%20%22one%22%20%232.css");
+});
+
 test("nested settings from different config layers merge", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],

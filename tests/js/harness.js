@@ -144,11 +144,11 @@ function makeCells($, specs) {
 
 // Mirrors nbclassic's Notebook: cells are read back from the DOM through get_cell_elements, which
 // RISE overrides on the prototype. A class per page keeps that override from leaking across tests.
-function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded) {
+function makeNotebook($, metadata, notebookConfig, shortcuts, actions, loaded, name) {
     class FakeNotebook {
         constructor() {
             this.container = $("#notebook-container");
-            this.notebook_name = "slides.ipynb";
+            this.notebook_name = name;
             this._fully_loaded = loaded;
             this.metadata = loaded ? metadata : {};
             this.events = new FakeEvents();
@@ -257,6 +257,7 @@ function makeReveal(window) {
  *     nbclassic does while the notebook JSON is still loading, until finishNotebookLoad().
  * @param {boolean} [options.revealLoaded] - false holds back reveal.js, as RequireJS does while
  *     it downloads, until finishRevealLoad().
+ * @param {string} [options.notebookName] - the notebook's file name.
  */
 async function loadRise({
     cells,
@@ -265,6 +266,7 @@ async function loadRise({
     notebookConfig = {},
     notebookLoaded = true,
     revealLoaded = true,
+    notebookName = "slides.ipynb",
 }) {
     const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(PAGE, {
@@ -294,7 +296,8 @@ async function loadRise({
                                   notebookConfig,
                                   shortcuts,
                                   actionRegistry,
-                                  notebookLoaded);
+                                  notebookLoaded,
+                                  notebookName);
     const dialogs = [];
     const Jupyter = {
         notebook: notebook,

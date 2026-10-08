@@ -456,6 +456,11 @@ define([
 
   const RISE_BUTTONS = '#help_b,#exit_b,#toggle-chalkboard,#toggle-notes';
 
+  // built with attr(), so notebook metadata and file names cannot add attributes to the link
+  function stylesheet(href, id) {
+    return $('<link/>').attr({rel: 'stylesheet', href: href, id: id});
+  }
+
   function toggleAllRiseButtons() {
     $(RISE_BUTTONS).fadeToggle()
   }
@@ -524,13 +529,8 @@ define([
     // Available themes are in reveal.js/theme
     let theme = complete_config.theme;
     $('body').addClass(`theme-${theme}`);
-    let theme_path = `./reveal.js/theme/${theme}.css`;
-    $('head').prepend(
-      `<link rel="stylesheet" href="${require.toUrl(theme_path)}" id="theme" />`);
-    // Add reveal css
-    let main_path = "./reveal.js/reveal.css";
-    $('head').prepend(
-      `<link rel="stylesheet" href="${require.toUrl(main_path)}" id="revealcss" />`);
+    $('head').prepend(stylesheet(require.toUrl(`./reveal.js/theme/${theme}.css`), 'theme'));
+    $('head').prepend(stylesheet(require.toUrl('./reveal.js/reveal.css'), 'revealcss'));
 
     /* this policy of trying ./rise.css and then <notebook>.css
      * should be redefinable in the config
@@ -540,14 +540,9 @@ define([
     // remove extension if any
     let dot_index = name.lastIndexOf('.');
     let stem = (dot_index == -1) ? name : name.substr(0, dot_index);
-    // associated css
-    let name_css = `${stem}.css`;
-    // Attempt to load rise.css
-    $('head').append(
-      `<link rel="stylesheet" href="rise.css" id="rise-custom-css" />`);
-    // Attempt to load css with the same path as notebook
-    $('head').append(
-      `<link rel="stylesheet" href="${name_css}" id="rise-notebook-css" />`);
+    // Attempt to load rise.css, then css with the same path as the notebook
+    $('head').append(stylesheet('rise.css', 'rise-custom-css'));
+    $('head').append(stylesheet(`${encodeURIComponent(stem)}.css`, 'rise-notebook-css'));
 
 
     let enable_chalkboard = complete_config.enable_chalkboard;
@@ -555,9 +550,8 @@ define([
     if (enable_chalkboard) {
       // chalkboard is a plain script that defines window.RevealChalkboard
       modules.push('./reveal.js-chalkboard/plugin.js');
-      let chalkboard_css_path = './reveal.js-chalkboard/style.css';
       $('head').append(
-        `<link rel="stylesheet" href="${require.toUrl(chalkboard_css_path)}" id="chalkboardcss" />`);
+        stylesheet(require.toUrl('./reveal.js-chalkboard/style.css'), 'chalkboardcss'));
     }
 
     require(modules.map(require.toUrl), function(reveal, RevealNotes) {
