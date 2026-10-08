@@ -423,6 +423,8 @@ define([
   // every exit destroys it, so plugins and listeners follow the config of the current entry
   let Reveal = null;
   let deck_initialized = false;
+  // the slideshow keys are bound on entry, before reveal has loaded and started
+  let deck_started = false;
 
   // identifies the slideshow on screen, null once exited, so a load or start that finishes after
   // its slideshow has ended does nothing
@@ -647,6 +649,7 @@ define([
         if (entry !== current_entry) {
           return;
         }
+        deck_started = true;
         setStartingSlide(selected_slide);
         setupOutputObserver();
         if (enable_chalkboard) {
@@ -706,12 +709,30 @@ define([
    * setting names them. `key` is the default command-mode shortcut inside the slideshow; an
    * action with an empty key is bound only when reveal_shortcuts gives it one.
    */
+  // an action that needs the deck does nothing until it has started
+  function onDeck(run) {
+    return () => {
+      if (deck_started) {
+        run();
+      }
+    };
+  }
+
+  function onChalkboard(method) {
+    return onDeck(() => {
+      if (chalkboard()) {
+        chalkboard()[method]();
+      }
+    });
+  }
+
   const REVEAL_ACTIONS = {
     main: {
-      firstSlide: {key: 'home', help: 'jump to first slide', run: () => Reveal.slide(0)},
+      firstSlide: {key: 'home', help: 'jump to first slide', run: onDeck(() => Reveal.slide(0))},
       lastSlide: {key: 'end', help: 'jump to last slide',
-                  run: () => Reveal.slide(Number.MAX_VALUE)},
-      toggleOverview: {key: 'w', help: 'toggle overview', run: () => Reveal.toggleOverview()},
+                  run: onDeck(() => Reveal.slide(Number.MAX_VALUE))},
+      toggleOverview: {key: 'w', help: 'toggle overview',
+                       run: onDeck(() => Reveal.toggleOverview())},
       // comma, its natural key, cannot be bound in Jupyter; reveal's own keyboard handles it
       toggleAllRiseButtons: {key: '', help: 'show/hide buttons', run: toggleAllRiseButtons},
       fullscreenHelp: {key: 'f', help: 'show fullscreen help', run: fullscreenHelp},
@@ -719,22 +740,20 @@ define([
       riseHelp: {key: 'shift-/', help: 'show this help dialog', run: riseHelp},
     },
     chalkboard: {
-      clear: {key: 'minus', help: 'clear full size chalkboard', run: () => chalkboard().clear()},
-      reset: {key: '=', help: 'reset chalkboard data on current slide',
-              run: () => chalkboard().reset()},
+      clear: {key: 'minus', help: 'clear full size chalkboard', run: onChalkboard('clear')},
+      reset: {key: '=', help: 'reset chalkboard data on current slide', run: onChalkboard('reset')},
       toggleChalkboard: {key: '[', help: 'toggle full size chalkboard',
-                         run: () => chalkboard().toggleChalkboard()},
+                         run: onChalkboard('toggleChalkboard')},
       toggleNotesCanvas: {key: ']', help: 'toggle notes (slide-local)',
-                          run: () => chalkboard().toggleNotesCanvas()},
-      colorNext: {key: 's', help: 'cycle to next pen color', run: () => chalkboard().colorNext()},
-      colorPrev: {key: 'q', help: 'cycle to previous pen color',
-                  run: () => chalkboard().colorPrev()},
+                          run: onChalkboard('toggleNotesCanvas')},
+      colorNext: {key: 's', help: 'cycle to next pen color', run: onChalkboard('colorNext')},
+      colorPrev: {key: 'q', help: 'cycle to previous pen color', run: onChalkboard('colorPrev')},
       download: {key: '\\', help: 'download recorded chalkboard drawing',
-                 run: () => chalkboard().download()},
+                 run: onChalkboard('download')},
     },
     notes: {
       openNotes: {key: 't', help: 'open speaker notes window',
-                  run: () => Reveal.getPlugin('notes').open()},
+                  run: onDeck(() => Reveal.getPlugin('notes').open())},
     },
   };
 
@@ -959,6 +978,7 @@ define([
 
   function Remover() {
     current_entry = null;
+    deck_started = false;
     if (deck_initialized) {
       // the chalkboard saves drawings a second after the last stroke; the next entry reloads them
       if (chalkboard()) {

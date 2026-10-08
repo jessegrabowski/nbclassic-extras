@@ -509,6 +509,21 @@ test("exiting while reveal is still loading restores the notebook and never star
     assert.equal(rise.revealListenerCount("ready"), 0);
 });
 
+test("slideshow keys pressed while reveal is still loading do nothing", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true } },
+        revealLoaded: false,
+    });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+
+    for (const action of ["toggleOverview", "lastSlide", "openNotes", "toggleChalkboard"]) {
+        rise.run(`RISE:${action}`);
+    }
+});
+
 test("chalkboard buttons stay hidden on entries after chalkboard is turned off", async (t) => {
     const metadata = { rise: { enable_chalkboard: true } };
     const rise = await loadRise({ cells: [cell("Alpha", "slide")], metadata: metadata });
