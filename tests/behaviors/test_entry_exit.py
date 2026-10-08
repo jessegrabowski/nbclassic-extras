@@ -1,6 +1,6 @@
 import re
 
-from nbformat.v4 import new_code_cell
+from nbformat.v4 import new_code_cell, new_output
 from playwright.sync_api import expect
 from slideshow import (
     CURRENT_SUBSLIDE,
@@ -135,3 +135,15 @@ def test_exiting_a_scaled_slideshow_leaves_the_notebook_unscaled(nbclassic_serve
     exit_slideshow(page)
 
     assert (container.get_attribute("style") or "").strip() == ""
+
+
+def test_a_cell_div_inside_an_output_is_not_counted_as_a_notebook_cell(nbclassic_server, page):
+    html = new_output("display_data", data={"text/html": '<div class="cell">Inner</div>'})
+    cells = [markdown("Alpha", "slide"), new_code_cell("x = 1", outputs=[html])]
+    nbclassic_server.open_notebook(page, cells)
+    expect(page.locator(".output .cell")).to_have_count(1)
+
+    assert page.evaluate("() => Jupyter.notebook.ncells()") == 2
+    enter_slideshow(page)
+    exit_slideshow(page)
+    assert page.evaluate("() => Jupyter.notebook.ncells()") == 2
