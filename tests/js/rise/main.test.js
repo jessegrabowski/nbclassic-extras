@@ -370,7 +370,10 @@ test("a custom shortcut replaces its default and an empty one unbinds it", async
 });
 
 test("inside the slideshow the reveal and plugin actions are bound to their keys", async (t) => {
-    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true } },
+    });
     t.after(rise.close);
 
     rise.run("RISE:slideshow");
@@ -610,7 +613,10 @@ function helpKeys(dialog) {
 }
 
 test("the help dialog lists the slideshow shortcuts", async (t) => {
-    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide")],
+        metadata: { rise: { enable_chalkboard: true } },
+    });
     t.after(rise.close);
 
     rise.run("RISE:riseHelp");
@@ -621,6 +627,20 @@ test("the help dialog lists the slideshow shortcuts", async (t) => {
     for (const key of ["Space", "Shift", "Enter", "home", "end", "w", "t", "/", ",", "["]) {
         assert.ok(keys.includes(key), key);
     }
+});
+
+test("without chalkboard, its keys keep their Jupyter actions and its help is left out", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", "slide")] });
+    t.after(rise.close);
+
+    rise.run("RISE:slideshow");
+    rise.run("RISE:riseHelp");
+
+    const command = rise.shortcutMap("command");
+    assert.equal(command.s, "jupyter-notebook:save-notebook");
+    assert.equal(command.q, "jupyter-notebook:close-pager");
+    assert.equal(command["["], undefined);
+    assert.ok(!helpKeys(rise.dialogs[0]).includes("["));
 });
 
 test("the help dialog shows a customized reveal shortcut instead of the default", async (t) => {

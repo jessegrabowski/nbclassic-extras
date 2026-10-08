@@ -840,8 +840,12 @@ define([
       let reveal_bindings = revealBindings();
       rebind(command_shortcuts, "shift-enter", "RISE:smart-exec");
       rebind(edit_shortcuts, "shift-enter", "RISE:smart-exec");
-      // add all reveal.js and plugin bindings to jupyter
+      // add all reveal.js and plugin bindings to jupyter; chalkboard keys stay Jupyter's own
+      // (s saves, q closes the pager) unless chalkboard is on
       for (const module of Object.keys(reveal_bindings)){
+        if (module === 'chalkboard' && !complete_config.enable_chalkboard) {
+          continue;
+        }
         for (const action of Object.keys(reveal_bindings[module])){
           const key = reveal_bindings[module][action];
           if (key) {
@@ -950,16 +954,17 @@ define([
           "<li><kbd>Left Arrow</kbd>: left <em>(note: Space preferred)</em></li>" +
           "<li><kbd>Right Arrow</kbd>: right <em>(note: Shift Space preferred)</em></li>" +
           "</ul>" +
-          "<li><strong>with chalkboard enabled:</strong>" +
-          "<ul>" +
-          helpListItem(cb_keys.toggleChalkboard, cb_help.toggleChalkboard) +
-          helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvas) +
-          helpListItem(cb_keys.colorNext, cb_help.colorNext) +
-          helpListItem(cb_keys.colorPrev, cb_help.colorPrev) +
-          helpListItem(cb_keys.download, cb_help.download) +
-          helpListItem(cb_keys.reset, cb_help.reset) +
-          helpListItem(cb_keys.clear, cb_help.clear) +
-          "</ul>" +
+          (complete_config.enable_chalkboard ?
+           "<li><strong>chalkboard:</strong>" +
+           "<ul>" +
+           helpListItem(cb_keys.toggleChalkboard, cb_help.toggleChalkboard) +
+           helpListItem(cb_keys.toggleNotesCanvas, cb_help.toggleNotesCanvas) +
+           helpListItem(cb_keys.colorNext, cb_help.colorNext) +
+           helpListItem(cb_keys.colorPrev, cb_help.colorPrev) +
+           helpListItem(cb_keys.download, cb_help.download) +
+           helpListItem(cb_keys.reset, cb_help.reset) +
+           helpListItem(cb_keys.clear, cb_help.clear) +
+           "</ul>" : "") +
           "</ul>" +
           "<b>NOTE</b>: of course you have to use these shortcuts <b>in command mode.</b>"
       )
