@@ -158,12 +158,27 @@ define([
       });
   }
 
-  /* uniform way to access slide type, whether the slideshow metadata is set or not
-   * also sometimes slide_type is set to '-' by the toolbar
+  // the slide types that give a cell a role; '-' and '' only continue the current (sub)slide
+  const SLIDE_ROLES = ['slide', 'subslide', 'fragment', 'notes', 'skip'];
+
+  // set on each entry, so a notebook nobody prepared for slides shows one cell per slide
+  let untyped_cells_start_slides = false;
+
+  function notebookHasSlideRoles() {
+    return Jupyter.notebook.get_cells().some(
+      (cell) => SLIDE_ROLES.includes((cell.metadata.slideshow || {}).slide_type));
+  }
+
+  /* An untyped cell continues the current (sub)slide, unless no cell in the notebook has a role,
+   * in which case it starts a new slide. The Slideshow cell toolbar's '-', and the '' left by
+   * toggling a type off, always continue; both are returned as ''.
    */
   function get_slide_type(cell) {
     let slide_type = (cell.metadata.slideshow || {}).slide_type;
-    return ( (slide_type === undefined) || (slide_type == '-')) ? '' : slide_type;
+    if (slide_type === undefined || slide_type === null) {
+      return untyped_cells_start_slides ? 'slide' : '';
+    }
+    return (slide_type == '-') ? '' : slide_type;
   }
 
   function is_slide(cell)    {return get_slide_type(cell) == 'slide';}
@@ -172,6 +187,19 @@ define([
   function is_skip(cell)     {return get_slide_type(cell) == 'skip';}
   function is_notes(cell)    {return get_slide_type(cell) == 'notes';}
   function is_regular(cell)  {return get_slide_type(cell) == '';}
+
+  // a cell added during the slideshow appears on the slide being shown, which its type records;
+  // a pasted cell receives the copied cell's metadata after create.Cell, so the tag waits a tick
+  function tagCellsAddedInSlideshow() {
+    Jupyter.notebook.events.on('create.Cell', function(event, data) {
+      setTimeout(function() {
+        let metadata = data.cell.metadata;
+        if (current_entry !== null && (metadata.slideshow || {}).slide_type == null) {
+          metadata.slideshow = $.extend({}, metadata.slideshow, {slide_type: '-'});
+        }
+      }, 0);
+    });
+  }
 
   /* Use the slideshow metadata to rearrange cell DOM elements into the
    * structure expected by reveal.js
@@ -1213,6 +1241,7 @@ define([
   function revealMode() {
     if (current_entry === null) {
       rebuildConfig();
+      untyped_cells_start_slides = !notebookHasSlideRoles();
       // Preparing the new reveal-compatible structure
       let selected_slide = markupSlides($('div#notebook-container'));
       // Adding the reveal stuff
@@ -1303,6 +1332,7 @@ define([
     configLoaded()
       .then(registerJupyterActions)
       .then(addButtonsAndShortcuts)
+      .then(tagCellsAddedInSlideshow)
       .then(enterSlideshowInSpeakerView)
       .catch((error) => console.error("RISE: setup failed", error));
 

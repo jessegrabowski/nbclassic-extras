@@ -63,17 +63,21 @@ function cell(source, slideType, cellType = "markdown") {
 
 class FakeEvents {
     constructor() {
-        this.handlers = new Map();
+        this.handlers = [];
+    }
+
+    on(name, handler) {
+        this.handlers.push({ name: name, handler: handler, once: false });
     }
 
     one(name, handler) {
-        this.handlers.set(name, [...(this.handlers.get(name) || []), handler]);
+        this.handlers.push({ name: name, handler: handler, once: true });
     }
 
-    trigger(name) {
-        const handlers = this.handlers.get(name) || [];
-        this.handlers.delete(name);
-        handlers.forEach((handler) => handler());
+    trigger(name, data) {
+        const matching = this.handlers.filter((entry) => entry.name === name);
+        this.handlers = this.handlers.filter((entry) => entry.name !== name || !entry.once);
+        matching.forEach((entry) => entry.handler({ type: name }, data));
     }
 }
 

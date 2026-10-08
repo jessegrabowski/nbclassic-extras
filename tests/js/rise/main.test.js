@@ -89,7 +89,30 @@ test("a fragment groups the regular cells that follow it", async (t) => {
     assert.deepEqual(cellTexts($, fragments.eq(1)), ["Delta"]);
 });
 
-test("dash and unset slide types are regular cells", async (t) => {
+test("a notebook without slide types shows one cell per slide", async (t) => {
+    const rise = await loadRise({ cells: [cell("Alpha", undefined), cell("Bravo", undefined)] });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(cellTexts($, "#slide-0-0"), ["Alpha"]);
+    assert.deepEqual(cellTexts($, "#slide-1-0"), ["Bravo"]);
+});
+
+test("dash cells do not keep an otherwise untyped notebook from one cell per slide", async (t) => {
+    const cells = [cell("Alpha", undefined), cell("Bravo", "-"), cell("Charlie", undefined)];
+    const rise = await loadRise({ cells: cells });
+    t.after(rise.close);
+    const { $ } = rise;
+
+    rise.run("RISE:slideshow");
+
+    assert.deepEqual(cellTexts($, "#slide-0-0"), ["Alpha", "Bravo"]);
+    assert.deepEqual(cellTexts($, "#slide-1-0"), ["Charlie"]);
+});
+
+test("in a notebook with slide types, dash, empty and unset all continue a slide", async (t) => {
     const cells = [
         cell("Alpha", "slide"),
         cell("Bravo", "-"),
