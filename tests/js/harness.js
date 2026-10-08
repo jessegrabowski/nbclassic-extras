@@ -1,6 +1,6 @@
-// Loads static/rise/main.js in a jsdom page with nbclassic's own jQuery and shortcut manager and a
-// fake Jupyter whose notebook, config, actions, and dialogs hold state. Tests drive RISE only
-// through what setup() registers and assert on the resulting DOM and Jupyter state.
+// Loads static/rise/main.js or static/gist_it/main.js in a jsdom page with nbclassic's own jQuery
+// and a fake Jupyter whose notebook, config, actions, and dialogs hold state. Tests drive each
+// extension only through what it registers and assert on the resulting DOM and Jupyter state.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -8,6 +8,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 const MAIN_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "rise", "main.js"), "utf8");
+const GIST_IT_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "gist_it", "main.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -456,4 +457,183 @@ function loadRevealPlugin(relativePath,
     };
 }
 
-module.exports = { cell, loadRise, loadRevealPlugin };
+// Stands in for the browser's XMLHttpRequest so jQuery's $.ajax runs for real against a fake
+// Jupyter server: `server(request)` answers each request with {status, body}, and every request is
+// kept.
+function fakeServerXhr(window, server, requests) {
+    return class FakeServerXhr {
+        constructor() {
+            this.readyState = 0;
+            this.status = 0;
+            this.statusText = "";
+            this.responseText = "";
+            this.withCredentials = false;
+            this.headers = {};
+            this.aborted = false;
+        }
+
+        open(method, url) {
+            this.method = method;
+            this.url = url;
+            this.readyState = 1;
+        }
+
+        setRequestHeader(name, value) {
+            this.headers[name.toLowerCase()] = value;
+        }
+
+        overrideMimeType() {}
+
+        getAllResponseHeaders() {
+            return "content-type: application/json\r\n";
+        }
+
+        getResponseHeader(name) {
+            return name.toLowerCase() === "content-type" ? "application/json" : null;
+        }
+
+        send(body) {
+            const request = {
+                method: this.method,
+                url: this.url,
+                headers: this.headers,
+                body: body ? JSON.parse(body) : undefined,
+            };
+            requests.push(request);
+            window.setTimeout(() => {
+                if (this.aborted) {
+                    return;
+                }
+                const reply = server(request);
+                this.status = reply.status;
+                this.statusText = String(reply.status);
+                this.responseText = JSON.stringify(reply.body ?? null);
+                this.readyState = 4;
+                this.onload();
+            }, 0);
+        }
+
+        abort() {
+            this.aborted = true;
+            if (this.onabort) {
+                this.onabort();
+            }
+        }
+    };
+}
+
+// Builds a dialog the way nbclassic's dialog.modal does: the body, then one button per entry,
+// each dismissing the dialog unless its data-dismiss is removed.
+function fakeDialog($) {
+    return {
+        modal(options) {
+            const footer = $('<div class="modal-footer"></div>');
+            for (const [label, button] of Object.entries(options.buttons || {})) {
+                $('<button class="btn"></button>')
+                    .addClass(button.class || "")
+                    .attr("data-dismiss", "modal")
+                    .text(label)
+                    .on("click", button.click || (() => {}))
+                    .appendTo(footer);
+            }
+            const body = $('<div class="modal-body"></div>').append(options.body);
+            return $('<div class="modal"></div>').append(body, footer).appendTo("body");
+        },
+    };
+}
+
+/**
+ * Load gist_it into a fresh page whose server endpoints are `server`, and wait for it to register.
+ *
+ * @param {object} options
+ * @param {object} [options.config] - the notebook nbconfig section.
+ * @param {object} [options.metadata] - notebook metadata.
+ * @param {string} [options.notebookName] - the notebook's file name.
+ * @param {function} [options.server] - answers a request {method, url, headers, body} with
+ *     {status, body}; answers the account endpoint, and 500 to anything else, by default.
+ */
+async function loadGistIt({
+    config = {},
+    metadata = {},
+    notebookName = "talk.ipynb",
+    server = (request) => request.url === "/gist_it/account"
+        ? { status: 200, body: { login: "octocat" } }
+        : { status: 500, body: { message: "unexpected request" } },
+}) {
+    const { virtualConsole, closePage } = strictConsole();
+    const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', {
+        url: "http://localhost:8888/notebooks/talk.ipynb",
+        runScripts: "outside-only",
+        pretendToBeVisual: true,
+        virtualConsole: virtualConsole,
+    });
+    const window = dom.window;
+    const requests = [];
+    // jQuery reads XMLHttpRequest's capabilities when it loads
+    window.XMLHttpRequest = fakeServerXhr(window, server, requests);
+    window.eval(JQUERY_JS);
+    const $ = window.jQuery;
+
+    const actions = new Map();
+    const notebook = {
+        config: { data: config, loaded: Promise.resolve() },
+        metadata: metadata,
+        notebook_name: notebookName,
+        notebook_path: `talks/${notebookName}`,
+        base_url: "/",
+        dirty: false,
+        keyboard_manager: {},
+        toJSON() {
+            return { cells: [], metadata: this.metadata, nbformat: 4, nbformat_minor: 5 };
+        },
+        set_dirty(dirty) {
+            this.dirty = dirty;
+        },
+    };
+    const Jupyter = {
+        notebook: notebook,
+        keyboard_manager: {
+            actions: {
+                register(action, name, prefix) {
+                    actions.set(`${prefix}:${name}`, action);
+                    return `${prefix}:${name}`;
+                },
+            },
+        },
+        toolbar: { add_buttons_group() {} },
+    };
+
+    let factory = null;
+    window.define = (deps, body) => {
+        factory = body;
+    };
+    // nbclassic's ajax adds the XSRF header, which these tests do not look at
+    const utils = {
+        ajax: (url, settings) => $.ajax(url, settings),
+        url_path_join: (...parts) => parts.join("/").replace(/\/+/g, "/"),
+    };
+    window.eval(GIST_IT_JS);
+    await factory($, Jupyter, fakeDialog($), utils).load_jupyter_extension();
+
+    return {
+        $: $,
+        notebook: notebook,
+        requests: requests,
+        run(actionName) {
+            actions.get(actionName).handler();
+        },
+        idle: (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
+        async until(condition, timeout = 2000) {
+            const deadline = Date.now() + timeout;
+            while (!condition()) {
+                if (Date.now() > deadline) {
+                    throw new Error(`timed out waiting for ${condition}`);
+                }
+                await new Promise((resolve) => window.setTimeout(resolve, 5));
+            }
+        },
+        close: () => closePage(window),
+    };
+}
+
+module.exports = { cell, loadGistIt, loadRise, loadRevealPlugin };

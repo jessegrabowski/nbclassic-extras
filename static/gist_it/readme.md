@@ -1,59 +1,48 @@
 Gist it
 =======
 
-Publish notebooks as Github gists with a single button click!
+Publish the open notebook as a GitHub gist with one click, and update that gist on later clicks.
 
 ![](icon.png)
 
 
-Authentication
---------------
+Setup
+-----
 
-The extension works with no special settings, publishing anonymous,
-non-modifiable gists.
+The Jupyter server publishes through the [GitHub CLI](https://cli.github.com/), as whichever
+account `gh` is logged in to on the machine that runs the server. The browser never sees a token.
+Install `gh` there and log in once:
 
-To create gists owned by your Github user, or to modify existing gists (useful
-for multiple revisions of a notebook!), you need to be authenticated with Github.
+```
+gh auth login
+```
 
+`gh auth login` asks for the `gist` scope by default. A login made without it can add it with
+`gh auth refresh -s gist`.
 
-### Anonymous
+The dialog names the account it publishes as. When `gh` is missing or logged out, the dialog says
+so and publishing fails with that message.
 
-You can publish anonymous gists without any authentication (the default mode).
-Anonymous gists can't be edited, so every time you click the button, a new gist
-is created.
-
-
-
-### Personal access tokens
-
-At the moment, the only supported method of authentication is client-side,
-using Github _personal access tokens_.
-
-__Important:__ __using personal access token authentication only makes sense if
-you are the only user of the notebook server__, and control the server.
-Otherwise, other users of the server may use your token
-(either accidentally or maliciously) to create/edit/delete gists,
-or exercise any other permissions you might have given to the token.
-If the server is only for your personal use, then you can create a github
-personal access token at [github.com/settings/tokens](https://github.com/settings/tokens).
-It makes sense to only grant the token the minimum permissions (scopes)
-necessary for the extension to work, in this case, the `gists` scope.
-Once you've got your token from Github, enter it in the
-[jupyter_nbextensions_configurator](https://github.com/Jupyter-contrib/jupyter_nbextensions_configurator)
-ui for it to be stored in the server config.
+To publish to GitHub Enterprise, set `GH_HOST` to the Enterprise host in the environment the
+Jupyter server starts in, and log in to that host with `gh auth login --hostname`.
 
 
-### Full Github OAuth
+Publishing
+----------
 
-Github's full OAuth authentication
-(which would be required to make this extension useful for authenticating users
-in a multi-notebook setup)
-requires some server-side code.
-There are some issues with implementing this directly (
-essentially related to a secret which the App server must know, and for obvious
-reasons can't be published as part of open-source code) as a Jupyter extension.
-I ([@jcb91](https://github.com/jcb91)) started writing this `Gist it` extension
-to work with a 3rd-party authentication app, but didn't finish it or test it,
-so it's not functional at the moment.
-If you'd like to have the full OAuth model, I'd be happy to help with any
-attempt you make - drop me a line on Github.
+The first click creates a gist. gist_it saves its id in the notebook metadata and marks the
+notebook as changed, so save it to keep the id. Later clicks update that gist. To publish to a
+different gist, change the id in the dialog, or clear it to create a new one.
+
+The dialog checks the id as you type and says whether the gist will be updated. A gist created as
+private stays private, because GitHub does not change a gist's visibility on update.
+
+
+Settings
+--------
+
+The one setting goes in the notebook section of nbconfig, `~/.jupyter/nbconfig/notebook.json`.
+
+| setting | default | meaning |
+|---|---|---|
+| `gist_it_default_to_public` | `false` | whether a new gist is public unless unchecked in the dialog |
