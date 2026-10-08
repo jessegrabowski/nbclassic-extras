@@ -999,9 +999,9 @@ define([
 
   }
 
+  // replaces the slide's history entry, so exiting adds none of its own
   function removeHash() {
-    history.pushState("", document.title, window.location.pathname
-                      + window.location.search);
+    history.replaceState(null, "", window.location.pathname + window.location.search);
   }
 
   function Remover() {
