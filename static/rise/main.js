@@ -469,8 +469,7 @@ define([
     let position = (typeof placement === 'object') ? placement : {};
     $(`<div class="chalkboard-button" id="${id}"><a href="#"><i class="fa ${icon}"></i></a></div>`)
       .css({
-        position: 'absolute',
-        zIndex: 30,
+        position: 'fixed',
         fontSize: '24px',
         left: position.left || default_left,
         bottom: position.bottom || '30px',
@@ -488,9 +487,9 @@ define([
     let config = complete_config.chalkboard || {};
     addChalkboardButton('toggle-chalkboard', 'fa-pencil-square',
                         () => chalkboard().toggleChalkboard(), config.toggleChalkboardButton,
-                        '30px');
+                        '4em');
     addChalkboardButton('toggle-notes', 'fa-pencil',
-                        () => chalkboard().toggleNotesCanvas(), config.toggleNotesButton, '70px');
+                        () => chalkboard().toggleNotesCanvas(), config.toggleNotesButton, '7em');
   }
 
   function Revealer(selected_slide) {

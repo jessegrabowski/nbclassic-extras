@@ -1,4 +1,5 @@
 from playwright.sync_api import expect
+import pytest
 from slideshow import enter_slideshow, exit_slideshow, markdown
 
 PAINTED_PIXELS = """() => {
@@ -116,3 +117,14 @@ def test_drawings_survive_leaving_and_reentering_the_slideshow(nbclassic_server,
     enter_slideshow(page)
 
     page.wait_for_function(f"() => ({PAINTED_PIXELS})() > 0")
+
+
+def test_a_configured_button_position_moves_the_chalkboard_toggle(nbclassic_server, page):
+    chalkboard = {"toggleChalkboardButton": {"left": "300px", "bottom": "100px"}}
+    metadata = {"rise": {"enable_chalkboard": True, "chalkboard": chalkboard}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+
+    box = page.locator("#toggle-chalkboard").bounding_box()
+    assert box["x"] == pytest.approx(300, abs=1)
+    assert box["y"] + box["height"] == pytest.approx(page.viewport_size["height"] - 100, abs=1)
