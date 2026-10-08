@@ -458,8 +458,8 @@ function loadRevealPlugin(relativePath,
 }
 
 // Stands in for the browser's XMLHttpRequest so jQuery's $.ajax runs for real against a fake
-// Jupyter server: `server(request)` answers each request with {status, body}, and every request is
-// kept.
+// Jupyter server: `server(request)` answers each request with {status, body} after an optional
+// `delay` in milliseconds, and every request is kept.
 function fakeServerXhr(window, server, requests) {
     return class FakeServerXhr {
         constructor() {
@@ -500,17 +500,17 @@ function fakeServerXhr(window, server, requests) {
                 body: body ? JSON.parse(body) : undefined,
             };
             requests.push(request);
+            const reply = server(request);
             window.setTimeout(() => {
                 if (this.aborted) {
                     return;
                 }
-                const reply = server(request);
                 this.status = reply.status;
                 this.statusText = String(reply.status);
                 this.responseText = JSON.stringify(reply.body ?? null);
                 this.readyState = 4;
                 this.onload();
-            }, 0);
+            }, reply.delay ?? 0);
         }
 
         abort() {
@@ -550,7 +550,8 @@ function fakeDialog($) {
  * @param {object} [options.metadata] - notebook metadata.
  * @param {string} [options.notebookName] - the notebook's file name.
  * @param {function} [options.server] - answers a request {method, url, headers, body} with
- *     {status, body}; answers the account endpoint, and 500 to anything else, by default.
+ *     {status, body, delay}, where delay is in milliseconds; answers the account endpoint, and
+ *     500 to anything else, by default.
  */
 async function loadGistIt({
     config = {},

@@ -115,6 +115,30 @@ test("an existing gist is looked up, then updated under the notebook's new name"
     assert.ok(gistIt.notebook.dirty);
 });
 
+test("publishing stays disabled while the published gist is looked up again", async (t) => {
+    const gistIt = await loadGistIt({
+        server: (request) => {
+            if (request.method === "POST") {
+                return published("abc123", 1);
+            }
+            return request.url === "/gist_it/account"
+                ? ACCOUNT
+                : { status: 200, body: { revisions: 1 }, delay: 50 };
+        },
+    });
+    t.after(gistIt.close);
+    const { $ } = gistIt;
+
+    gistIt.run(GIST_ACTION);
+    $("#gist_modal .btn-primary").trigger("click");
+    await gistIt.until(() => $("#gist_result a").length > 0);
+
+    assert.equal($("#gist_id_status").text(), "Looking up the gist...");
+    assert.ok($("#gist_modal .btn-primary").prop("disabled"));
+    await gistIt.until(() => /will be updated/.test($("#gist_id_status").text()));
+    assert.equal($("#gist_modal .btn-primary").prop("disabled"), false);
+});
+
 test("a gist the GitHub account cannot see disables publishing", async (t) => {
     const gistIt = await loadGistIt({
         metadata: { gist: { id: "abc123" } },

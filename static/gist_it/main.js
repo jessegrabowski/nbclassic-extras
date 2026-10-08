@@ -173,6 +173,8 @@ define([
         modal.find('.btn').prop('disabled', true);
         result.empty();
         serverRequest('POST', 'gists', publishRequest(id, description, is_public))
+            // re-enabled first, so the lookup that follows a publish can disable it again
+            .always(() => modal.find('.btn').prop('disabled', false))
             .done((gist) => {
                 rememberGist(gist.id, description, is_public);
                 modal.find('#gist_id').val(gist.id);
@@ -186,8 +188,7 @@ define([
             })
             .fail((jqXHR, textStatus) => {
                 result.append(alertBox('danger', errorMessage(jqXHR, textStatus)));
-            })
-            .always(() => modal.find('.btn').prop('disabled', false));
+            });
     }
 
     // says which GitHub account the server publishes as, or why it cannot publish
