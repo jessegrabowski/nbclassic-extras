@@ -1,5 +1,5 @@
 from playwright.sync_api import expect
-from slideshow import enter_slideshow, markdown
+from slideshow import enter_slideshow, exit_slideshow, markdown
 
 PAINTED_PIXELS = """() => {
     const canvas = document.querySelector('#notescanvas canvas');
@@ -94,3 +94,25 @@ def test_the_plugins_own_keys_stay_off_beside_rises(nbclassic_server, page):
     page.keyboard.press("c")
     page.keyboard.press("]")
     expect(page.locator("#notescanvas")).to_have_css("pointer-events", "auto")
+
+
+def test_chalkboard_turned_on_between_entries_opens_the_board(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")])
+    enter_slideshow(page)
+    exit_slideshow(page)
+
+    page.evaluate("() => { Jupyter.notebook.metadata.rise = {enable_chalkboard: true}; }")
+    enter_slideshow(page)
+    page.click("#toggle-chalkboard")
+
+    expect(page.locator("#chalkboard")).to_be_visible()
+
+
+def test_drawings_survive_leaving_and_reentering_the_slideshow(nbclassic_server, page):
+    open_notes_canvas(nbclassic_server, page)
+    draw_stroke(page)
+    exit_slideshow(page)
+
+    enter_slideshow(page)
+
+    page.wait_for_function(f"() => ({PAINTED_PIXELS})() > 0")

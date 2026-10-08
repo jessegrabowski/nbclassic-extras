@@ -1,7 +1,10 @@
+import re
+
 from nbformat.v4 import new_code_cell
 from playwright.sync_api import expect
 from slideshow import (
     CURRENT_SUBSLIDE,
+    code,
     enter_slideshow,
     exit_slideshow,
     has_class,
@@ -101,3 +104,34 @@ def test_exit_restores_the_shortcuts_behind_custom_reveal_keys(nbclassic_server,
     assert page.evaluate(shortcut, "shift-enter") == "jupyter-notebook:run-cell-and-select-next"
     assert page.evaluate(shortcut, "g") is None
     assert page.evaluate(shortcut, "i,i") == "jupyter-notebook:interrupt-kernel"
+
+
+def test_returning_to_the_tab_keeps_the_cell_editor_focused_in_and_after_the_slideshow(
+    nbclassic_server, page
+):
+    nbclassic_server.open_notebook(page, [code("x = 1", "slide")])
+    editor = page.locator(".CodeMirror")
+    editor_focused = "() => document.activeElement.closest('.CodeMirror') !== null"
+    return_to_tab = "() => document.dispatchEvent(new Event('visibilitychange'))"
+
+    enter_slideshow(page)
+    editor.click()
+    page.evaluate(return_to_tab)
+    assert page.evaluate(editor_focused)
+
+    exit_slideshow(page)
+    editor.click()
+    page.evaluate(return_to_tab)
+    assert page.evaluate(editor_focused)
+
+
+def test_exiting_a_scaled_slideshow_leaves_the_notebook_unscaled(nbclassic_server, page):
+    metadata = {"rise": {"width": 3000, "height": 2000, "minScale": 0.1}}
+    nbclassic_server.open_notebook(page, [markdown("Alpha", "slide")], metadata=metadata)
+    enter_slideshow(page)
+    container = page.locator("#notebook-container")
+    expect(container).to_have_attribute("style", re.compile("transform"))
+
+    exit_slideshow(page)
+
+    assert (container.get_attribute("style") or "").strip() == ""

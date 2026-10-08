@@ -445,10 +445,20 @@ define([
     $('div#rise-overlay').remove();
   }
    
-  // reveal.js loads as an AMD module on the first entry, which also initializes it; later entries
-  // reconfigure the same deck
+  // reveal.js loads as an AMD module on the first entry; every entry initializes the deck and
+  // every exit destroys it, so plugins and listeners follow the config of the current entry
   let Reveal = null;
-  let reveal_initialized = false;
+  let deck_initialized = false;
+
+  // identifies the slideshow on screen, null once exited, so a load or start that finishes after
+  // its slideshow has ended does nothing
+  let current_entry = null;
+  let last_entry = 0;
+
+  // reveal adds classes and attributes to #notebook and #notebook-container that destroy() leaves,
+  // and some (fade, progress) mean something else to Bootstrap
+  let notebook_classes = null;
+  let container_classes = null;
 
   // listeners RISE adds to reveal, removed on exit so re-entering does not stack a second set
   let reveal_listeners = [];
@@ -467,14 +477,6 @@ define([
 
   const RISE_BUTTONS = '#help_b,#exit_b,#toggle-chalkboard,#toggle-notes';
 
-  // the controls reveal creates directly inside its root element, div#notebook; notebook
-  // output can carry the same class names (a Bootstrap .progress bar, say)
-  function revealChrome() {
-    return $('div#notebook')
-      .children('.backgrounds, .progress, .controls, .slide-number, .speaker-notes, .pause-overlay')
-      .add('div#aria-status-div');
-  }
-
   function toggleAllRiseButtons() {
     $(RISE_BUTTONS).fadeToggle()
   }
@@ -492,7 +494,7 @@ define([
   // `placement` is the chalkboard's toggleChalkboardButton or toggleNotesButton setting: false
   // leaves the button out, an object may set its left, bottom, top and right
   function addChalkboardButton(id, icon, handler, placement, default_left) {
-    if (placement === false || $(`#${id}`).length) {
+    if (placement === false) {
       return;
     }
     let position = (typeof placement === 'object') ? placement : {};
@@ -526,7 +528,11 @@ define([
     
     // console.log(`complete_config: ${JSON.stringify(complete_config)}`);
     
+    let entry = ++last_entry;
+    current_entry = entry;
     $('body').addClass("rise-enabled");
+    notebook_classes = $('div#notebook').attr('class') || '';
+    container_classes = $('div#notebook-container').attr('class') || '';
     // Prepare the DOM to start the slideshow
     $('div#header').hide();
     $('.end_space').hide();
@@ -578,7 +584,7 @@ define([
     require(modules.map(require.toUrl), function(reveal, RevealNotes) {
       Reveal = reveal;
       // the slideshow may have been exited while reveal was loading
-      if (!$('body').hasClass('rise-enabled')) {
+      if (entry !== current_entry) {
         return;
       }
       // Full list of configuration options available here:
@@ -600,6 +606,8 @@ define([
         // view in a narrow window
         fragmentInURL: false,
         scrollActivationWidth: null,
+        // cells stay editable in the slideshow, so returning to the tab keeps the editor focused
+        focusBodyOnPageVisibilityChange: false,
 
         // key bindings configurable are now defined in the reveal_default_bindings dict -
         // this should only be used to unbind keys
@@ -635,25 +643,15 @@ define([
       }
 
       if (enable_chalkboard) {
+        // each entry starts a new chalkboard, which reloads drawings kept in session storage
+        let storage = `rise-chalkboard:${Jupyter.notebook.notebook_path}`;
         options.chalkboard = $.extend(
-          true, {}, complete_config.chalkboard, {keyBindings: CHALKBOARD_KEYS_OFF});
+          true, {storage: storage}, complete_config.chalkboard, {keyBindings: CHALKBOARD_KEYS_OFF});
         options.plugins.push(window.RevealChalkboard);
       }
 
-      let started;
-      if (reveal_initialized) {
-        // the previous exit hid these inline; reveal sets the display of the ones it
-        // manages again when configured, the others would stay hidden
-        revealChrome().css('display', '');
-        // chalkboard buttons outlive the slideshow, so start each entry from shown, or hidden
-        // when chalkboard has since been turned off
-        $('#toggle-chalkboard, #toggle-notes').toggle(Boolean(enable_chalkboard));
-        Reveal.configure(options);
-        started = Promise.resolve();
-      } else {
-        started = Reveal.initialize(options);
-        reveal_initialized = true;
-      }
+      let started = Reveal.initialize(options);
+      deck_initialized = true;
 
       addRevealListener('ready', function(event) {
         Unselecter();
@@ -682,8 +680,7 @@ define([
 
       started.then(function() {
         // the slideshow may have been exited before reveal finished starting
-        if (!$('body').hasClass('rise-enabled')) {
-          Reveal.removeEventListeners();
+        if (entry !== current_entry) {
           return;
         }
         setStartingSlide(selected_slide);
@@ -1058,10 +1055,14 @@ define([
   }
 
   function Remover() {
-    // before its first start finishes, reveal has no input handlers to unbind yet
-    if (Reveal && Reveal.isReady()) {
-      Reveal.configure({minScale: 1.0});
-      Reveal.removeEventListeners();
+    current_entry = null;
+    if (deck_initialized) {
+      // the chalkboard saves drawings a second after the last stroke; the next entry reloads them
+      if (chalkboard()) {
+        chalkboard().updateStorage();
+      }
+      Reveal.destroy();
+      deck_initialized = false;
     }
     clearTimeout(pending_sync);
     removeRevealListeners();
@@ -1070,21 +1071,16 @@ define([
     $('body').removeClass(`theme-${theme}`);
     $('div#header').show();
 
-    $('div#notebook').removeClass("reveal");
-    // woekaround to fix fade class conflicting between notebook and reveal css...
-    if ($('div#notebook').hasClass('fade')) { $('div#notebook').removeClass("fade"); };
-    $('div#notebook-container').removeClass("slides");
-    $('div#notebook-container').css('width','');
-    $('div#notebook-container').css('height','');
-    $('div#notebook-container').css('zoom','');
+    $('div#notebook').attr('class', notebook_classes).removeAttr('role');
+    $('div#notebook-container').attr('class', container_classes);
+    // the chalkboard plugin has no destroy(); the next entry's chalkboard creates its own
+    $('#notescanvas, #chalkboard, #toggle-chalkboard, #toggle-notes').remove();
 
     $('#theme').remove();
     $('#revealcss').remove();
     $('#chalkboardcss').remove();
     $('#rise-custom-css').remove();
     $('#rise-notebook-css').remove();
-
-    revealChrome().hide();
 
     let cells = Jupyter.notebook.get_cells();
     for (let cell of cells) {
@@ -1306,11 +1302,7 @@ define([
 
   // the entrypoint - call this to enter or exit reveal mode
   function revealMode() {
-    // We search for a class tag in the maintoolbar to check if reveal mode is "on".
-    // If the tag exits, we exit. Otherwise, we enter the reveal mode.
-    let tag = $('#maintoolbar').hasClass('reveal_tagging');
-
-    if (!tag) {
+    if (current_entry === null) {
       rebuildConfig();
       // Preparing the new reveal-compatible structure
       let selected_slide = markupSlides($('div#notebook-container'));
@@ -1320,7 +1312,6 @@ define([
       setupKeys("reveal_mode");
       buttonExit();
       buttonHelp();
-      $('#maintoolbar').addClass('reveal_tagging');
     } else {
       // first use current selection if relevant, the first cell in the visible slide otherwise
       let current_cell_index = Jupyter.notebook.get_selected_index();
@@ -1331,7 +1322,6 @@ define([
       setupKeys("notebook_mode");
       $('#exit_b').remove();
       $('#help_b').remove();
-      $('#maintoolbar').removeClass('reveal_tagging');
       // Workaround... should be a better solution. Need to investigate codemirror
       fixCellHeight();
       // select and focus on current cell

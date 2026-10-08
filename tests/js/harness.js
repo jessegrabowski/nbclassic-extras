@@ -203,26 +203,32 @@ function configSection(data) {
     return { data: data, loaded: Promise.resolve(), load() {} };
 }
 
-// Holds the slide reveal is showing and fires its ready event, so RISE's own lookups and
-// listeners work. Tests assert only on the listeners RISE leaves registered, not on calls into
-// reveal.
+// Holds the slide reveal is showing and, like reveal, fires its ready event once each
+// initialize finishes starting, unless destroy() came first. Tests assert only on the listeners
+// RISE leaves registered, not on calls into reveal.
 function makeReveal(window) {
     let current = null;
     let listeners = [];
-    let ready = false;
+    let initialized = false;
     return {
         initialize() {
-            const fireReady = () => listeners
-                .filter((listener) => listener.name === "ready")
-                .forEach((listener) => listener.callback());
+            if (initialized) {
+                throw new Error("Reveal.js has already been initialized.");
+            }
+            initialized = true;
             return new Promise((resolve) => window.setTimeout(() => {
-                ready = true;
-                fireReady();
+                if (!initialized) {
+                    return;
+                }
+                listeners
+                    .filter((listener) => listener.name === "ready")
+                    .forEach((listener) => listener.callback());
                 resolve();
             }, 0));
         },
-        isReady: () => ready,
-        configure() {},
+        destroy() {
+            initialized = false;
+        },
         addEventListener(name, callback) {
             listeners.push({ name: name, callback: callback });
         },
@@ -230,14 +236,12 @@ function makeReveal(window) {
             listeners = listeners.filter((l) => l.name !== name || l.callback !== callback);
         },
         listenerCount: (name) => listeners.filter((listener) => listener.name === name).length,
-        // Like reveal's, this unbinds reveal's own input handlers and leaves added listeners alone.
-        removeEventListeners() {},
         sync() {},
         slide(h, v) {
             current = window.document.getElementById(`slide-${h}-${v || 0}`);
         },
         getCurrentSlide: () => current,
-        getConfig: () => ({ width: 960, height: 700 }),
+        getPlugin: () => undefined,
     };
 }
 

@@ -480,6 +480,24 @@ test("chalkboard buttons stay hidden on entries after chalkboard is turned off",
     assert.equal(shown(), 0);
 });
 
+test("re-entering on the slide shown at exit selects its code cell again", async (t) => {
+    const rise = await loadRise({
+        cells: [cell("Alpha", "slide"), cell("x = 1", "", "code")],
+        metadata: { rise: { auto_select_timeout: 0 } },
+    });
+    t.after(rise.close);
+    rise.run("RISE:slideshow");
+    await rise.idle(10);
+    rise.run("RISE:slideshow");
+    rise.cells[1].unselect();
+    rise.cells[0].select();
+
+    rise.run("RISE:slideshow");
+    await rise.idle(10);
+
+    assert.deepEqual(rise.cells.map((c) => c.selected), [false, true]);
+});
+
 test("show_buttons_on_startup false hides every RISE button on each entry", async (t) => {
     const rise = await loadRise({
         cells: [cell("Alpha", "slide")],
