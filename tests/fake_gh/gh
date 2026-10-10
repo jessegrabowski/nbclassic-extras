@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""A stand-in for the GitHub CLI: `gh api --method METHOD PATH [--input -]`.
+
+It appends each call to $FAKE_GH_DIR/calls.jsonl and answers from $FAKE_GH_DIR/replies.json, which
+maps "METHOD PATH" to {"exit": int, "stdout": json, "stderr": str}. A call with no reply fails the
+way gh does for a missing resource.
+"""
+
+import json
+import os
+from pathlib import Path
+import sys
+
+directory = Path(os.environ["FAKE_GH_DIR"])
+arguments = sys.argv[1:]
+method = arguments[arguments.index("--method") + 1]
+path = arguments[arguments.index("--method") + 2]
+stdin = sys.stdin.read() if "--input" in arguments else None
+with (directory / "calls.jsonl").open("a") as calls:
+    calls.write(json.dumps({"method": method, "path": path, "body": stdin and json.loads(stdin)}))
+    calls.write("\n")
+
+replies_file = directory / "replies.json"
+replies = json.loads(replies_file.read_text()) if replies_file.exists() else {}
+not_found = {"exit": 1, "stdout": {"message": "Not Found"}, "stderr": "gh: Not Found (HTTP 404)"}
+reply = replies.get(f"{method} {path}", not_found)
+if reply.get("stdout") is not None:
+    sys.stdout.write(json.dumps(reply["stdout"]))
+sys.stderr.write(reply.get("stderr", ""))
+sys.exit(reply.get("exit", 0))

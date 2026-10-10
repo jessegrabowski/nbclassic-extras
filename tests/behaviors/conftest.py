@@ -15,12 +15,14 @@ import pytest
 
 TOKEN = "e2e-test-token"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FAKE_GH = REPO_ROOT / "tests" / "fake_gh"
 
 
 @dataclass(frozen=True)
 class NbclassicServer:
     port: int
     notebook_dir: Path
+    fake_gh_dir: Path
 
     def open_notebook(self, page, cells, metadata=None, wait_for_kernel=False):
         """Open ``cells`` as a new notebook in ``page`` and return its name.
@@ -62,6 +64,26 @@ class NbclassicServer:
         )
         urllib.request.urlopen(request).close()
 
+    def url(self, path):
+        """Return the token-authenticated URL of ``path`` on this server."""
+        return f"http://localhost:{self.port}/{path}?token={TOKEN}"
+
+    def reply_from_gh(self, replies):
+        """Make the server's fake gh answer ``replies``, a map of "METHOD PATH" to its reply."""
+        (self.fake_gh_dir / "replies.json").write_text(json.dumps(replies))
+
+    def gh_calls(self):
+        """Return the ``gh api`` calls the server made, oldest first."""
+        calls = self.fake_gh_dir / "calls.jsonl"
+        if not calls.exists():
+            return []
+        return [json.loads(line) for line in calls.read_text().splitlines()]
+
+    def forget_gh(self):
+        """Drop the fake gh's replies and recorded calls."""
+        for name in ("replies.json", "calls.jsonl"):
+            (self.fake_gh_dir / name).unlink(missing_ok=True)
+
     def shut_down_sessions(self):
         """Delete every notebook session, shutting down its kernel."""
         sessions_url = f"http://localhost:{self.port}/api/sessions"
@@ -96,7 +118,7 @@ def wait_until_up(proc, port, timeout, log_path):
 
 
 def jupyter_home_serving_the_repo(home):
-    """Build Jupyter config and data dirs that serve and enable the working tree's nbextensions.
+    """Build Jupyter config and data dirs that serve and enable the working tree's extensions.
 
     An install copies ``static/`` into the environment, so without this a browser runs whatever JS
     was current when the environment was built. The data dir must go on ``JUPYTER_PATH``: inside an
@@ -105,7 +127,13 @@ def jupyter_home_serving_the_repo(home):
     config_dir = home / "config"
     data_dir = home / "data"
     shutil.copytree(REPO_ROOT / "static", data_dir / "nbextensions")
-    shutil.copytree(REPO_ROOT / "jupyter-config", config_dir / "nbconfig")
+    shutil.copytree(
+        REPO_ROOT / "jupyter-config" / "notebook.d", config_dir / "nbconfig" / "notebook.d"
+    )
+    shutil.copytree(
+        REPO_ROOT / "jupyter-config" / "jupyter_server_config.d",
+        config_dir / "jupyter_server_config.d",
+    )
     return config_dir, data_dir
 
 
@@ -114,6 +142,7 @@ def nbclassic_server(tmp_path_factory, pytestconfig):
     """Run a real nbclassic server serving this repo's nbextensions and yield its handle."""
     port = free_port()
     notebook_dir = tmp_path_factory.mktemp("notebooks")
+    fake_gh_dir = tmp_path_factory.mktemp("fake_gh")
     config_dir, data_dir = jupyter_home_serving_the_repo(tmp_path_factory.mktemp("jupyter_home"))
     log_path = pytestconfig.cache.mkdir("nbclassic") / "nbclassic.log"
     # free_port's port can be taken before the server binds it; without retries the server then
@@ -139,13 +168,16 @@ def nbclassic_server(tmp_path_factory, pytestconfig):
                 "JUPYTER_DATA_DIR": str(data_dir),
                 "JUPYTER_PATH": str(data_dir),
                 "IPYTHONDIR": str(tmp_path_factory.mktemp("ipython")),
+                # the gist_it server extension publishes through this stand-in for the GitHub CLI
+                "PATH": f"{FAKE_GH}{os.pathsep}{os.environ['PATH']}",
+                "FAKE_GH_DIR": str(fake_gh_dir),
             },
             stdout=log,
             stderr=subprocess.STDOUT,
         )
         try:
             wait_until_up(proc=proc, port=port, timeout=40, log_path=log_path)
-            yield NbclassicServer(port=port, notebook_dir=notebook_dir)
+            yield NbclassicServer(port=port, notebook_dir=notebook_dir, fake_gh_dir=fake_gh_dir)
         finally:
             proc.terminate()
             try:
@@ -165,8 +197,18 @@ def browser():
 @pytest.fixture
 def page(browser, nbclassic_server):
     page = browser.new_page()
+    # a test routes the GitHub API calls it expects; any other one fails the test
+    unrouted_github_calls = []
+
+    def refuse(route):
+        unrouted_github_calls.append(f"{route.request.method} {route.request.url}")
+        route.abort()
+
+    page.route("https://api.github.com/**", refuse)
     yield page
     try:
         page.close()
     finally:
         nbclassic_server.shut_down_sessions()
+        nbclassic_server.forget_gh()
+    assert unrouted_github_calls == []
