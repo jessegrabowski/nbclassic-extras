@@ -86,22 +86,38 @@ define([
             .append(content);
     }
 
-    function gistEditor(saved) {
-        let form = $('<form/>').attr('id', 'gist_editor').addClass('form-horizontal');
-        let row = (label, field) => $('<div/>')
-            .addClass('form-group')
-            .append($('<label/>').addClass('col-sm-2 control-label').attr('for', field.attr('id'))
-                    .text(label))
-            .append($('<div/>').addClass('col-sm-10').append(field))
-            .appendTo(form);
+    // one line of status text: muted for information, colored for an outcome
+    function statusLine(kind, icon, content) {
+        let color = (kind === 'info') ? 'text-muted' : `text-${kind}`;
+        return $('<span/>')
+            .addClass(color)
+            .append($('<i/>').addClass(`fa fa-fw ${icon}`))
+            .append(content);
+    }
 
-        row('Gist id', $('<input/>').addClass('form-control').attr('id', 'gist_id').val(saved.id))
-            .find('.col-sm-10').append($('<div/>').attr('id', 'gist_id_status')
-                                       .addClass('help-block'));
-        row('Description', $('<input/>').addClass('form-control').attr('id', 'gist_description')
-            .val(saved.description));
-        row('Public', $('<input/>').attr({type: 'checkbox', id: 'gist_public'})
-            .prop('checked', saved.public));
+    function gistEditor(saved) {
+        let form = $('<form/>').attr('id', 'gist_editor');
+
+        $('<div/>').addClass('form-group')
+            .append($('<label/>').attr('for', 'gist_id').text('Gist id'))
+            .append($('<input/>').addClass('form-control').attr('id', 'gist_id')
+                    .attr('placeholder', 'Leave empty to create a new gist').val(saved.id))
+            .append($('<p/>').attr('id', 'gist_id_status').addClass('help-block'))
+            .appendTo(form);
+        $('<div/>').addClass('form-group')
+            .append($('<label/>').attr('for', 'gist_description').text('Description'))
+            .append($('<input/>').addClass('form-control').attr('id', 'gist_description')
+                    .val(saved.description))
+            .appendTo(form);
+        $('<div/>').addClass('checkbox')
+            .append($('<label/>')
+                    .append($('<input/>').attr({type: 'checkbox', id: 'gist_public'})
+                            .prop('checked', saved.public))
+                    .append('Public'))
+            .append($('<p/>').addClass('help-block').text(
+                'Public gists are listed on your GitHub profile; secret ones are reachable only '
+                + 'through their link.'))
+            .appendTo(form);
         return form;
     }
 
@@ -113,8 +129,8 @@ define([
         let pending = null;
         let lookup = null;
 
-        function report(kind, content, can_publish) {
-            modal.find('#gist_id_status').empty().append(alertBox(kind, content));
+        function report(kind, icon, content, can_publish) {
+            modal.find('#gist_id_status').empty().append(statusLine(kind, icon, content));
             modal.find('.btn-primary').prop('disabled', !can_publish);
         }
 
@@ -125,32 +141,34 @@ define([
                 lookup = null;
             }
             if (id === '') {
-                report('info', 'A new gist will be created.', true);
+                report('info', 'fa-plus', 'A new gist will be created.', true);
                 return;
             }
             if (!GIST_ID.test(id)) {
-                report('danger', 'A gist id is made of the letters a-f and digits only.', false);
+                report('danger', 'fa-times', 'A gist id is made of the letters a-f and digits only.',
+                       false);
                 return;
             }
-            report('info', 'Looking up the gist...', false);
+            report('info', 'fa-spinner fa-spin', 'Looking up the gist...', false);
             lookup = serverRequest('GET', `gists/${id}/commits`);
             lookup
                 .done((reply) => {
                     let revisions = (reply.revisions === 1) ? '1 revision'
                                                             : `${reply.revisions} revisions`;
-                    report('success', `Gist ${id} will be updated; it has ${revisions} so far.`,
-                           true);
+                    report('success', 'fa-check',
+                           `Gist ${id} will be updated; it has ${revisions} so far.`, true);
                 })
                 .fail((jqXHR, textStatus) => {
                     if (textStatus === 'abort') {
                         return;
                     }
                     if (jqXHR.status === 404) {
-                        report('danger', 'No gist with this id is visible to your GitHub account.',
-                               false);
+                        report('danger', 'fa-times',
+                               'No gist with this id is visible to your GitHub account.', false);
                     } else {
                         let problem = errorMessage(jqXHR, textStatus);
-                        report('warning', `The gist could not be checked. ${problem}`, true);
+                        report('warning', 'fa-exclamation-triangle',
+                               `The gist could not be checked. ${problem}`, true);
                     }
                 });
         }
@@ -196,7 +214,10 @@ define([
         let account = modal.find('#gist_account');
         serverRequest('GET', 'account')
             .done((reply) => {
-                account.empty().append(alertBox('info', `Publishing as ${reply.login}.`));
+                account.empty().append(statusLine('info', 'fa-github', $('<span/>')
+                    .append('Publishing as ')
+                    .append($('<strong/>').text(reply.login))
+                    .append('.')));
             })
             .fail((jqXHR, textStatus) => {
                 account.empty().append(alertBox('danger', errorMessage(jqXHR, textStatus)));
@@ -205,7 +226,7 @@ define([
 
     function showGistEditor() {
         let body = $('<div/>')
-            .append($('<div/>').attr('id', 'gist_account'))
+            .append($('<div/>').attr('id', 'gist_account').addClass('form-group'))
             .append(gistEditor(savedGist()))
             .append($('<div/>').attr('id', 'gist_result'));
         let checker = null;
