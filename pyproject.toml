@@ -57,6 +57,8 @@ packages = ["nbclassic_extras"]
 "jupyter-config/notebook.d/rise.json" = "etc/jupyter/nbconfig/notebook.d/rise.json"
 "static/gist_it" = "share/jupyter/nbextensions/gist_it"
 "jupyter-config/notebook.d/gist_it.json" = "etc/jupyter/nbconfig/notebook.d/gist_it.json"
+"static/cell_ids" = "share/jupyter/nbextensions/cell_ids"
+"jupyter-config/notebook.d/cell_ids.json" = "etc/jupyter/nbconfig/notebook.d/cell_ids.json"
 "jupyter-config/jupyter_server_config.d/nbclassic_extras.json" = "etc/jupyter/jupyter_server_config.d/nbclassic_extras.json"
 
 [tool.pytest.ini_options]

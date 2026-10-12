@@ -1,0 +1,5 @@
+Type: Jupyter Notebook Extension
+Compatibility: 5.x, 6.x
+Name: Cell ids
+Main: main.js
+Description: Shows each cell's position in the notebook, counting from 0, as its prompt, with a code cell's execution count beneath it in smaller, muted type.
