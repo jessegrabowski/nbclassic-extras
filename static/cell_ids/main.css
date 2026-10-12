@@ -1,0 +1,15 @@
+div.input_prompt[data-cell-index]::before {
+    content: attr(data-cell-index);
+    display: block;
+}
+
+/* nbclassic drops the vertical padding of an empty prompt, which a text cell's prompt is */
+div.input_prompt[data-cell-index]:empty {
+    padding-top: 0.4em;
+    padding-bottom: 0.4em;
+}
+
+div.input_prompt .cell_run {
+    font-size: 75%;
+    color: #777;
+}

@@ -1,6 +1,7 @@
-// Loads static/rise/main.js or static/gist_it/main.js in a jsdom page with nbclassic's own jQuery
-// and a fake Jupyter whose notebook, config, actions, and dialogs hold state. Tests drive each
-// extension only through what it registers and assert on the resulting DOM and Jupyter state.
+// Loads static/rise/main.js, static/gist_it/main.js, or static/cell_ids/main.js in a jsdom page
+// with nbclassic's own jQuery and a fake Jupyter whose notebook, config, actions, and dialogs hold
+// state. Tests drive each extension only through what it registers and assert on the resulting DOM
+// and Jupyter state.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -9,6 +10,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 const REPO_ROOT = path.join(__dirname, "..", "..");
 const MAIN_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "rise", "main.js"), "utf8");
 const GIST_IT_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "gist_it", "main.js"), "utf8");
+const CELL_IDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_ids", "main.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -637,4 +639,121 @@ async function loadGistIt({
     };
 }
 
-module.exports = { cell, loadGistIt, loadRise, loadRevealPlugin };
+// Mirrors nbclassic's CodeCell prompt: set_input_prompt formats the execution count through the
+// class's input_prompt_function, writes it into div.input_prompt, and marks the notebook dirty.
+function fakeCodeCellClass($, notebook) {
+    return class CodeCell {
+        constructor(outputHtml) {
+            this.cell_type = "code";
+            this.input_prompt_number = null;
+            this.element = $(`<div class="cell code_cell">
+                <div class="input"><div class="prompt_container">
+                    <div class="prompt input_prompt"></div>
+                </div></div>
+                <div class="output_wrapper"><div class="prompt output_prompt">Out[1]:</div></div>
+            </div>`);
+            this.element.find(".output_wrapper").append(outputHtml);
+            this.element.data("cell", this);
+        }
+
+        set_input_prompt(number) {
+            this.input_prompt_number = number;
+            this.element.find("div.input_prompt").html(CodeCell.input_prompt_function(number, 1));
+            notebook.set_dirty(true);
+        }
+
+        static input_prompt_function(value) {
+            const count = (value === undefined || value === null) ? "&nbsp;"
+                                                                  : encodeURIComponent(value);
+            return `<bdi>In</bdi>&nbsp;[${count}]:`;
+        }
+    };
+}
+
+/**
+ * Load cell_ids into a fresh page holding `cells`, each rendered as nbclassic renders it on load.
+ * Like nbclassic, the notebook reads its cells back from the DOM, so the insertCell, moveCell, and
+ * deleteCell helpers change the notebook only by changing the DOM.
+ *
+ * @param {object} options
+ * @param {Array} options.cells - {cellType, executionCount, outputHtml} for each cell, where
+ *     outputHtml is markup a code cell's output shows.
+ */
+function loadCellIds({ cells }) {
+    const { virtualConsole, closePage } = strictConsole();
+    const dom = new JSDOM(PAGE, {
+        url: "http://localhost:8888/notebooks/cells.ipynb",
+        runScripts: "outside-only",
+        virtualConsole: virtualConsole,
+    });
+    const window = dom.window;
+    window.eval(JQUERY_JS);
+    const $ = window.jQuery;
+
+    const notebook = {
+        container: $("#notebook-container"),
+        dirty: false,
+        get_cells() {
+            return this.container.children(".cell").toArray()
+                .map((element) => $(element).data("cell"));
+        },
+        set_dirty(dirty) {
+            this.dirty = dirty;
+        },
+    };
+    const CodeCell = fakeCodeCellClass($, notebook);
+    const makeCell = ({ cellType, executionCount, outputHtml = "" }) => {
+        if (cellType === "markdown") {
+            const element = $('<div class="cell text_cell"><div class="prompt input_prompt"></div>'
+                              + '</div>');
+            const textCell = { cell_type: "markdown", element: element };
+            element.data("cell", textCell);
+            return textCell;
+        }
+        const codeCell = new CodeCell(outputHtml);
+        codeCell.set_input_prompt(executionCount);
+        return codeCell;
+    };
+    cells.map(makeCell).forEach((made) => made.element.appendTo(notebook.container));
+    notebook.dirty = false;
+
+    let factory = null;
+    window.define = (deps, body) => {
+        factory = body;
+    };
+    window.eval(CELL_IDS_JS);
+    const fakeRequire = { toUrl: (url) => url };
+    const extension = factory(fakeRequire, $, { notebook: notebook }, { CodeCell: CodeCell });
+    extension.load_jupyter_extension();
+
+    const elementAt = (index) => notebook.container.children(".cell").eq(index);
+    return {
+        $: $,
+        notebook: notebook,
+        // the index each cell's prompt shows, in notebook order, as an array of this realm
+        shownIndices() {
+            const prompts = notebook.container.find("div.input_prompt").toArray();
+            return Array.from(prompts, (prompt) => prompt.getAttribute("data-cell-index"));
+        },
+        insertCell(spec, index) {
+            elementAt(index).before(makeCell(spec).element);
+        },
+        // leaves the cell at index `to`
+        moveCell(from, to) {
+            const moving = elementAt(from).detach();
+            if (to < notebook.container.children(".cell").length) {
+                elementAt(to).before(moving);
+            } else {
+                notebook.container.append(moving);
+            }
+        },
+        deleteCell(index) {
+            elementAt(index).remove();
+        },
+        // MutationObserver callbacks run as microtasks
+        settle: () => new Promise((resolve) => window.setTimeout(resolve, 0)),
+        close: () => closePage(window),
+    };
+}
+
+module.exports = { cell, loadCellIds, loadGistIt, loadRise, loadRevealPlugin };
