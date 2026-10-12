@@ -10,7 +10,9 @@ def shown_indices(page):
 
 
 def test_a_run_cell_shows_its_index_above_its_execution_count(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [markdown("Alpha", ""), code("1 + 1")], wait_for_kernel=True)
+    nbclassic_server.open_notebook(
+        page, [markdown("Alpha", ""), code("1 + 1")], wait_for_kernel=True
+    )
 
     page.evaluate("() => Jupyter.notebook.execute_cells([1])")
 
