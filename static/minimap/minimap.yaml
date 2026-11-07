@@ -1,0 +1,5 @@
+Type: Jupyter Notebook Extension
+Compatibility: 5.x, 6.x
+Name: Minimap
+Main: main.js
+Description: Shows a strip at the right edge of the notebook that draws its cells and outputs at a small fixed scale and scrolls the notebook when clicked or dragged. A toolbar button shows or hides it.
