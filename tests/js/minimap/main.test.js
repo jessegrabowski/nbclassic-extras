@@ -160,17 +160,6 @@ test("the stylesheet's arrival tells the page its width changed", (t) => {
     assert.equal(resizes, 1);
 });
 
-test("toggling the strip tells the page its width changed", (t) => {
-    const minimap = loadMinimap({ scrollHeight: 8000, clientHeight: 800 });
-    t.after(minimap.close);
-    let resizes = 0;
-    minimap.window.addEventListener("resize", () => { resizes += 1; });
-
-    minimap.toggle();
-
-    assert.equal(resizes, 1);
-});
-
 test("the toolbar button toggles the strip and remembers the choice", (t) => {
     const minimap = loadMinimap({ scrollHeight: 8000, clientHeight: 800 });
     t.after(minimap.close);

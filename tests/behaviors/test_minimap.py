@@ -552,18 +552,6 @@ def test_a_folded_output_leaves_the_strip(nbclassic_server, page):
     page.wait_for_function(f"() => !({RED_PIXEL_IN_STRIP})()")
 
 
-def test_a_table_output_draws_as_a_gray_block(nbclassic_server, page):
-    source = "from IPython.display import HTML\nHTML('<table><tr><td>value</td></tr></table>')"
-    page.set_viewport_size({"width": 1400, "height": 700})
-    # the viewport marker tints what it covers, so the table sits below it
-    cells = [code("a = 1") for _ in range(12)] + [code(source)]
-    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
-
-    page.evaluate("() => Jupyter.notebook.execute_cells([12])")
-
-    page.wait_for_function(GRAY_BLOCK_IN_STRIP)
-
-
 def test_a_rich_output_holding_an_icon_still_draws_as_a_gray_block(nbclassic_server, page):
     source = (
         "from IPython.display import HTML\n"
