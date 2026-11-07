@@ -648,7 +648,7 @@ function fakeCodeCellClass($, notebook) {
         constructor(outputHtml) {
             this.cell_type = "code";
             this.input_prompt_number = null;
-            this.output_area = { collapsed: false };
+            this.output_area = { collapsed: false, outputs: [] };
             this.refreshes = 0;
             this.focused = false;
             this.element = $(`<div class="cell code_cell">
@@ -801,6 +801,8 @@ function loadCellFolds({ cells, config = {} }) {
     });
     notebook.config = configSection(config);
     notebook.get_selected_cells = () => notebook.get_cells().filter((made) => made.selected);
+    notebook.get_selected_cell = () => notebook.get_cells()[0];
+    notebook.scroll_manager = { element: $("<div>") };
     notebook.command_mode = () => {};
 
     const actions = new Map();

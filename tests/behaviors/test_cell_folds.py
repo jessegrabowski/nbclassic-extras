@@ -512,6 +512,86 @@ def test_running_a_cell_with_a_folded_output_shows_the_new_output(nbclassic_serv
     assert not collapsed_output(page, 0)
 
 
+def long_notebook(nbclassic_server, page):
+    page.set_viewport_size({"width": 1100, "height": 700})
+    source = "\n".join(f"line_{number} = 1" for number in range(6))
+    nbclassic_server.open_notebook(page, [code_with_output(source) for _ in range(30)])
+
+
+def scroll_cell_on_screen(page, index):
+    page.evaluate(
+        """(index) => {
+            const element = Jupyter.notebook.get_cell(index).element[0];
+            Jupyter.notebook.scroll_manager.element[0].scrollTop = element.offsetTop - 150;
+        }""",
+        index,
+    )
+
+
+def on_screen_shift(page, index, selector, actions):
+    # measured in one task, so layout that settles after page load cannot move the numbers
+    page.wait_for_function(
+        "() => Jupyter.keyboard_manager.actions.exists('cell_folds:unfold-block')"
+    )
+    return page.evaluate(
+        """([index, selector, actions]) => {
+            const element = Jupyter.notebook.get_cell(index).element.find(selector)[0];
+            const top = element.getBoundingClientRect().top;
+            actions.forEach((action) => {
+                Jupyter.keyboard_manager.actions.call(`cell_folds:${action}`);
+            });
+            return element.getBoundingClientRect().top - top;
+        }""",
+        [index, selector, actions],
+    )
+
+
+@pytest.mark.parametrize(
+    "actions",
+    [
+        ["fold-input-of-selected"],
+        ["fold-input-of-all"],
+        ["fold-input-of-all", "unfold-input-of-all"],
+    ],
+    ids=["one_input", "all_inputs", "unfolding_all_inputs"],
+)
+def test_input_folds_hold_the_selected_output_still(nbclassic_server, page, actions):
+    long_notebook(nbclassic_server, page)
+    page.evaluate("() => Jupyter.notebook.select(15)")
+    scroll_cell_on_screen(page, 15)
+
+    shift = on_screen_shift(page, 15, ".output_wrapper", actions)
+
+    assert abs(shift) <= 1
+
+
+def test_folding_every_output_holds_the_selected_cell_still(nbclassic_server, page):
+    long_notebook(nbclassic_server, page)
+    page.evaluate("() => Jupyter.notebook.select(15)")
+    scroll_cell_on_screen(page, 15)
+
+    shift = on_screen_shift(page, 15, ".input_prompt", ["fold-output-of-all"])
+
+    assert abs(shift) <= 1
+
+
+def test_folding_all_inputs_holds_the_screen_when_the_selected_cell_is_elsewhere(
+    nbclassic_server, page
+):
+    long_notebook(nbclassic_server, page)
+    page.evaluate(
+        """() => {
+            Jupyter.notebook.select(0);
+            const top_cell = Jupyter.notebook.get_cell(15).element[0];
+            Jupyter.notebook.scroll_manager.element[0].scrollTop = top_cell.offsetTop + 2;
+        }"""
+    )
+
+    shift = on_screen_shift(page, 15, ".output_wrapper", ["fold-input-of-all"])
+
+    assert abs(shift) <= 1
+
+
 @pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)
 def test_separate_keys_fold_and_unfold_the_selected_cell(
     nbclassic_server, page, fold, unfold, input_folds, output_folds

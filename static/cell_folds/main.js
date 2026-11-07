@@ -208,6 +208,40 @@ define([
         return `${direction}-${targetName}-of-${scopeName}`;
     }
 
+    function isOnScreen(element, viewport) {
+        let {top, bottom} = element.getBoundingClientRect();
+        return bottom > viewport.top && top < viewport.bottom;
+    }
+
+    function hasOutput(cell) {
+        return cell instanceof CodeCell && cell.output_area.outputs.length > 0;
+    }
+
+    function anchorCell(viewport) {
+        let selected = Jupyter.notebook.get_selected_cell();
+        if (isOnScreen(selected.element[0], viewport)) {
+            return selected;
+        }
+        let onScreen = Jupyter.notebook.get_cells()
+            .filter((cell) => isOnScreen(cell.element[0], viewport));
+        return onScreen.find(hasOutput) || onScreen[0] || selected;
+    }
+
+    function anchorElement(cell, targetName) {
+        return targetName === 'input' && hasOutput(cell) ? cell.output_area.wrapper[0]
+                                                         : cell.element[0];
+    }
+
+    // holds still what the reader is looking at, which is the output when an input changes
+    function keepingPosition(targetName, change) {
+        let scroller = Jupyter.notebook.scroll_manager.element[0];
+        let viewport = scroller.getBoundingClientRect();
+        let anchor = anchorElement(anchorCell(viewport), targetName);
+        let topBefore = anchor.getBoundingClientRect().top;
+        change();
+        scroller.scrollTop += anchor.getBoundingClientRect().top - topBefore;
+    }
+
     function registerActions() {
         let actions = Jupyter.keyboard_manager.actions;
         for (let [targetName, target] of Object.entries(TARGETS)) {
@@ -215,7 +249,8 @@ define([
                 for (let direction of DIRECTIONS) {
                     actions.register({
                         help: `${direction} ${target.label} of ${scope.label}`,
-                        handler: () => target[direction](scope.cells()),
+                        handler: () => keepingPosition(targetName,
+                                                       () => target[direction](scope.cells())),
                     }, actionName(direction, targetName, scopeName), ACTION_PREFIX);
                 }
             }
