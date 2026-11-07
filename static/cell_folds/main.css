@@ -13,32 +13,3 @@ div.cell.input_folded div.input div.inner_cell {
 div.output_wrapper div.output_collapsed {
     display: none !important;
 }
-
-/*
- * nbclassic's collapse leaves the output in place and hides it with an inline style. The selected
- * cell stays, so keys never act on a cell no one can see.
- */
-body.outputs_only div.cell.input_folded:not(.selected):not(:has(div.output_area)),
-body.outputs_only div.cell.input_folded:not(.selected):has(div.output[style*="none"]) {
-    display: none;
-}
-
-body.outputs_only div.cell.input_folded div.input {
-    display: none;
-}
-
-body.outputs_only div.text_cell div.prompt,
-body.outputs_only div.cell.input_folded div.output_area > div.prompt,
-body.outputs_only div.cell.input_folded div.out_prompt_overlay {
-    display: none;
-}
-
-body.outputs_only div.cell.input_folded div.output_subarea {
-    max-width: 100%;
-}
-
-body.outputs_only div.cell.input_folded {
-    padding-top: 1em;
-    padding-bottom: 1em;
-    border-bottom: 1px solid #eee;
-}

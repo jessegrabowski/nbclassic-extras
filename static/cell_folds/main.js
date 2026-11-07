@@ -5,8 +5,7 @@
  * Alt-equals fold and unfold the code block at the cursor, whatever the setting.
  *
  * An input fold is a class on the cell, so it leaves the notebook clean and lasts for the session.
- * An output fold is nbclassic's own collapse, which is saved with the notebook. When every code
- * cell's input is folded, the page becomes the outputs-only reading view.
+ * An output fold is nbclassic's own collapse, which is saved with the notebook.
  */
 define([
     'require',
@@ -21,7 +20,6 @@ define([
 
     const CodeCell = codecell.CodeCell;
     const INPUT_FOLDED = 'input_folded';
-    const OUTPUTS_ONLY = 'outputs_only';
 
     function loadStylesheet() {
         $('<link/>')
@@ -33,17 +31,10 @@ define([
         return cells.filter((cell) => cell instanceof CodeCell);
     }
 
-    function updateReadingView() {
-        let cells = codeCells(Jupyter.notebook.get_cells());
-        let allFolded = cells.every((cell) => cell.element.hasClass(INPUT_FOLDED));
-        $('body').toggleClass(OUTPUTS_ONLY, cells.length > 0 && allFolded);
-    }
-
     function foldInputs(cells) {
         // keystrokes must not land in an editor that can no longer be seen
         Jupyter.notebook.command_mode();
         codeCells(cells).forEach((cell) => cell.element.addClass(INPUT_FOLDED));
-        updateReadingView();
     }
 
     function unfoldInputs(cells) {
@@ -54,7 +45,6 @@ define([
                 // CodeMirror cannot measure itself while hidden
                 cell.refresh();
             });
-        updateReadingView();
     }
 
     function changeOutputs(cells, {collapsed}) {
@@ -300,12 +290,6 @@ define([
         };
     }
 
-    // inserts, deletes, and cell type changes all change the notebook container's children
-    function followStructuralChanges() {
-        new MutationObserver(updateReadingView)
-            .observe(Jupyter.notebook.container[0], {childList: true});
-    }
-
     // nbclassic toggles an output on a double click of its prompt overlay, and folds take no clicks
     function ignorePromptDoubleClicks() {
         Jupyter.notebook.container[0].addEventListener('dblclick', (event) => {
@@ -319,7 +303,6 @@ define([
         loadStylesheet();
         registerActions();
         revealOnEdit();
-        followStructuralChanges();
         ignorePromptDoubleClicks();
         return Jupyter.notebook.config.loaded.then(() => {
             bindKeys();

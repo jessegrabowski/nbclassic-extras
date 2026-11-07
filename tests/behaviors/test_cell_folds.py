@@ -2,7 +2,7 @@ import nbformat
 from nbformat.v4 import new_output
 from playwright.sync_api import expect
 import pytest
-from slideshow import code, has_class, markdown
+from slideshow import code, markdown
 
 
 def run_action(page, name):
@@ -134,19 +134,6 @@ def test_a_joint_fold_hides_input_and_output(nbclassic_server, page):
     expect(first.locator(".output_area")).to_be_visible()
 
 
-def test_the_reading_view_hides_cells_whose_output_is_folded(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [markdown("Alpha", ""), code_with_output("first")])
-
-    run_action(page, "fold-joint-of-all")
-
-    expect(page.locator(".text_cell")).to_contain_text("Alpha")
-    expect(page.locator(".code_cell")).to_be_hidden()
-
-    run_action(page, "unfold-joint-of-all")
-
-    expect(page.locator(".code_cell")).to_be_visible()
-
-
 def test_a_folded_output_leaves_no_expand_button(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code_with_output("first")])
     page.evaluate("() => Jupyter.notebook.select(0)")
@@ -155,27 +142,6 @@ def test_a_folded_output_leaves_no_expand_button(nbclassic_server, page):
 
     expect(page.locator(".output_area")).to_be_hidden()
     expect(page.locator(".output_collapsed")).to_be_hidden()
-
-
-def test_the_reading_view_shows_markdown_and_outputs_only(nbclassic_server, page):
-    nbclassic_server.open_notebook(
-        page, [markdown("Alpha", ""), code_with_output("first"), code("no output")]
-    )
-
-    run_action(page, "fold-input-of-all")
-
-    expect(page.locator(".text_cell")).to_contain_text("Alpha")
-    expect(page.locator(".text_cell .prompt")).to_be_hidden()
-    expect(page.locator(".code_cell").nth(0).locator(".input")).to_be_hidden()
-    expect(page.locator(".code_cell").nth(0).locator(".output_area")).to_contain_text(
-        "first output"
-    )
-    expect(page.locator(".code_cell").nth(0).locator(".output_area .prompt")).to_be_hidden()
-    expect(page.locator(".code_cell").nth(1)).to_be_hidden()
-
-    run_action(page, "unfold-input-of-all")
-
-    expect(page.locator(".code_cell").nth(1)).to_be_visible()
 
 
 def test_a_saved_collapsed_output_shows_no_button_and_reopens_by_key(nbclassic_server, page):
@@ -457,48 +423,6 @@ def test_saving_keeps_output_folds_and_drops_input_folds(nbclassic_server, page)
 
     assert collapsed_output(page, 1)
     assert not folded_input(page, 1)
-
-
-def test_inserting_a_cell_leaves_the_reading_view(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [code_with_output("first")])
-    run_action(page, "fold-input-of-all")
-    expect(page.locator("body")).to_have_class(has_class("outputs_only"))
-
-    page.evaluate("() => Jupyter.notebook.insert_cell_below('code')")
-
-    expect(page.locator("body")).not_to_have_class(has_class("outputs_only"))
-
-
-@pytest.mark.parametrize(
-    "structural_change",
-    [
-        "Jupyter.notebook.delete_cell(1)",
-        "Jupyter.notebook.select(1); Jupyter.notebook.cells_to_markdown()",
-    ],
-    ids=["deleting_it", "making_it_markdown"],
-)
-def test_removing_the_last_unfolded_code_cell_enters_the_reading_view(
-    nbclassic_server, page, structural_change
-):
-    nbclassic_server.open_notebook(page, [code_with_output("first"), code("second")])
-    page.evaluate("() => Jupyter.notebook.select(0)")
-    run_action(page, "fold-input-of-selected")
-    expect(page.locator("body")).not_to_have_class(has_class("outputs_only"))
-
-    page.evaluate(f"() => {{ {structural_change} }}")
-
-    expect(page.locator("body")).to_have_class(has_class("outputs_only"))
-
-
-def test_the_reading_view_keeps_the_selected_cell_visible(nbclassic_server, page):
-    nbclassic_server.open_notebook(page, [code_with_output("first"), code("no output")])
-    run_action(page, "fold-input-of-all")
-    no_output = page.locator(".code_cell").nth(1)
-    expect(no_output).to_be_hidden()
-
-    page.evaluate("() => Jupyter.notebook.select(1)")
-
-    expect(no_output).to_be_visible()
 
 
 def test_running_a_cell_with_a_folded_output_shows_the_new_output(nbclassic_server, page):
