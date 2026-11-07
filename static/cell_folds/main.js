@@ -136,12 +136,34 @@ define([
             .filter((mark) => mark.__isFold);
     }
 
+    function isExactly(mark, range) {
+        let {from, to} = mark.find();
+        return CodeMirror.cmpPos(from, range.from) === 0 && CodeMirror.cmpPos(to, range.to) === 0;
+    }
+
+    // a fold is atomic, so Backspace or Delete beside it would delete all of its hidden text
+    function unfoldInsteadOfDeleting(editor, change) {
+        // nbclassic's Backspace command deletes with no change origin, so test the text itself
+        if (change.text.join('') !== '') {
+            return;
+        }
+        let fold = editor.findMarks(change.from, change.to)
+            .find((mark) => mark.__isFold && isExactly(mark, change));
+        if (fold) {
+            change.cancel();
+            // beforeChange handlers must not alter what the editor displays
+            setTimeout(() => fold.clear());
+        }
+    }
+
     function foldBlockAtCursor() {
         let editor = selectedEditor();
         if (foldsOnCursorLine(editor).length > 0) {
             return;
         }
         editor.foldCode(editor.getCursor(), BLOCK_FOLD_OPTIONS, 'fold');
+        editor.off('beforeChange', unfoldInsteadOfDeleting);
+        editor.on('beforeChange', unfoldInsteadOfDeleting);
         // CodeMirror leaves the cursor after the hidden text, on a line that cannot be seen
         let [fold] = foldsOnCursorLine(editor);
         if (fold) {

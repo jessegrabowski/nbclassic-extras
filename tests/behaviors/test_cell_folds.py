@@ -250,6 +250,35 @@ def test_editing_after_a_fold_changes_the_visible_header_only(nbclassic_server, 
 
 
 @pytest.mark.parametrize(
+    "keys",
+    [["ArrowRight", "Backspace"], ["Delete"]],
+    ids=["backspace_after_the_fold", "delete_before_the_fold"],
+)
+def test_deleting_beside_a_fold_unfolds_it_and_keeps_the_text(nbclassic_server, page, keys):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 1)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    for key in keys:
+        page.keyboard.press(key)
+
+    expect(page.locator(".CodeMirror-foldmarker")).to_have_count(0)
+    text = page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()")
+    assert text == FUNCTION_THEN_STATEMENT
+
+
+def test_deleting_a_selection_around_a_fold_deletes_it(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 1)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    page.keyboard.press("ControlOrMeta+a")
+    page.keyboard.press("Backspace")
+
+    assert page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()") == ""
+
+
+@pytest.mark.parametrize(
     ("cursor_line", "folded_lines"),
     [
         pytest.param(2, [1, 3], id="inner_body_folds_the_inner_block"),
