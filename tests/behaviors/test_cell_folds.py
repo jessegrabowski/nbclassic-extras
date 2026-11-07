@@ -86,6 +86,16 @@ def test_the_reading_view_hides_cells_whose_output_is_folded(nbclassic_server, p
     expect(page.locator(".code_cell")).to_be_visible()
 
 
+def test_a_folded_output_leaves_no_expand_button(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code_with_output("first")])
+    page.evaluate("() => Jupyter.notebook.select(0)")
+
+    run_action(page, "fold-output-of-selected")
+
+    expect(page.locator(".output_area")).to_be_hidden()
+    expect(page.locator(".output_collapsed")).to_be_hidden()
+
+
 def test_the_reading_view_shows_markdown_and_outputs_only(nbclassic_server, page):
     nbclassic_server.open_notebook(
         page, [markdown("Alpha", ""), code_with_output("first"), code("no output")]

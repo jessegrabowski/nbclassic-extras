@@ -3,6 +3,11 @@ div.cell.input_folded div.input div.inner_cell {
     display: none;
 }
 
+/* jQuery's show() writes an inline display, so only !important can keep this button away */
+div.output_wrapper div.output_collapsed {
+    display: none !important;
+}
+
 /* nbclassic's collapse leaves the output in place and hides it with an inline style */
 body.outputs_only div.cell.input_folded:not(:has(div.output_area)),
 body.outputs_only div.cell.input_folded:has(div.output[style*="none"]) {
