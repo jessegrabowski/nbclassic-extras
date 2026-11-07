@@ -9,57 +9,178 @@ body {
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-#pane {
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 8px;
+#hint {
+    color: #777;
+    margin: 8px;
 }
 
-#pane_title {
-    border-bottom: 1px solid #ddd;
-    color: #777;
+#panes {
+    display: flex;
+    height: 100%;
+}
+
+#panes > * {
+    flex: 1;
+}
+
+.split {
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+}
+
+.split.row {
+    flex-direction: row;
+}
+
+.split.column {
+    flex-direction: column;
+}
+
+.divider {
+    background: #eee;
     flex: none;
+}
+
+.split.row > .divider {
+    cursor: col-resize;
+    width: 6px;
+}
+
+.split.column > .divider {
+    cursor: row-resize;
+    height: 6px;
+}
+
+/* spacing belongs on a pane's children, because padding here would skew its share of a split */
+.pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    position: relative;
+}
+
+/* the half of a pane that a dragged pane would take */
+.pane[data-drop]::after {
+    background: rgba(66, 133, 244, 0.2);
+    content: "";
+    pointer-events: none;
+    position: absolute;
+}
+
+.pane[data-drop="left"]::after {
+    bottom: 0;
+    left: 0;
+    top: 0;
+    width: 50%;
+}
+
+.pane[data-drop="right"]::after {
+    bottom: 0;
+    right: 0;
+    top: 0;
+    width: 50%;
+}
+
+.pane[data-drop="top"]::after {
+    height: 50%;
+    left: 0;
+    right: 0;
+    top: 0;
+}
+
+.pane[data-drop="bottom"]::after {
+    bottom: 0;
+    height: 50%;
+    left: 0;
+    right: 0;
+}
+
+.pane_header {
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    flex: none;
+    margin: 8px;
+    padding-bottom: 4px;
+}
+
+/* the title is the handle for moving a pane, so an empty first line must not collapse it */
+.pane_title {
+    color: #777;
+    cursor: move;
+    flex: 1;
     font-family: monospace;
     font-size: 13px;
     font-weight: normal;
-    margin: 0 0 8px;
+    line-height: 16px;
+    margin: 0;
+    min-height: 16px;
+    min-width: 0;
     overflow: hidden;
-    padding-bottom: 4px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-#pane_outputs {
+.pane_title[data-cell-index]::before {
+    color: #333;
+    content: attr(data-cell-index);
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+.pane_button {
+    background: none;
+    border: none;
+    color: #777;
+    cursor: pointer;
+    flex: none;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 16px;
+    padding: 0 0 0 8px;
+}
+
+.pane_button:hover {
+    color: #333;
+}
+
+.pane_outputs {
     display: flex;
     flex: 1;
     flex-direction: column;
+    margin: 0 8px 8px;
     min-height: 0;
     overflow: auto;
 }
 
-/* a plot grows to fill the window and keeps its shape */
-#pane_outputs img {
+/* a plot among other outputs keeps its own size, since stretching would squeeze it to nothing */
+.pane_outputs > img {
+    flex: none;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+/* a lone plot grows to fill the pane and keeps its shape */
+.pane_outputs > img:only-child {
     flex: 1 1 0;
     min-height: 0;
-    object-fit: contain;
     width: 100%;
 }
 
-#pane_outputs pre {
+.pane_outputs pre {
     flex: none;
     font-size: 13px;
     margin: 0 0 4px;
 }
 
-#pane_outputs table {
+.pane_outputs table {
     border-collapse: collapse;
     font-size: 13px;
 }
 
-#pane_outputs td,
-#pane_outputs th {
+.pane_outputs td,
+.pane_outputs th {
     border: 1px solid #ddd;
     padding: 2px 8px;
     text-align: right;

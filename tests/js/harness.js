@@ -19,6 +19,7 @@ const DASHBOARD_DIR = path.join(REPO_ROOT, "static", "cell_dashboard");
 const CELL_DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "main.js"), "utf8");
 const DASHBOARD_HTML = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.html"), "utf8");
 const DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.js"), "utf8");
+const PANE_TREE_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "tree.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -963,21 +964,45 @@ function fakeBroadcastChannel(window) {
 function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
     const { window, $, notebook, closePage } = notebookPage([]);
     const channel = fakeBroadcastChannel(window);
+    // like a browser, opening a name that is already open returns that window as it is
     const opened = [];
-    window.open = (url, name) => opened.push({ url: url, name: name });
+    const windows = new Map();
+    window.open = (url, name, features) => {
+        if (!windows.has(name)) {
+            windows.set(name, {
+                location: { href: "about:blank" },
+                closed: false,
+                focused: 0,
+                focus() {
+                    this.focused += 1;
+                },
+            });
+        }
+        opened.push({ url: url, name: name, features: features });
+        return windows.get(name);
+    };
 
-    const made = cells.map(({ cellType = "code", source = "", outputs = [], trusted = true }) => ({
-        cell_type: cellType,
-        get_text: () => source,
-        output_area: { trusted: trusted, toJSON: () => outputs },
+    const made = cells.map((spec, index) => ({
+        id: `cell-${index}`,
+        cell_type: spec.cellType ?? "code",
+        get_text: () => spec.source ?? "",
+        output_area: { trusted: spec.trusted ?? true, toJSON: () => spec.outputs ?? [] },
     }));
     let selected = 0;
+    const scrolledTo = [];
     notebook.notebook_path = notebookPath;
     notebook.base_url = "/";
     notebook.events = new FakeEvents();
     notebook.get_selected_cell = () => made[selected];
+    notebook.get_cells = () => made;
+    notebook.get_cell = (index) => made[index];
+    notebook.select = (index) => {
+        selected = index;
+    };
+    notebook.scroll_to_cell = (index) => scrolledTo.push(index);
 
     const actions = new Map();
+    const commandShortcuts = new Map();
     const toolbarButtons = [];
     const jupyter = {
         notebook: notebook,
@@ -987,6 +1012,9 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
                     actions.set(`${prefix}:${name}`, action);
                     return `${prefix}:${name}`;
                 },
+            },
+            command_shortcuts: {
+                add_shortcut: (key, action) => commandShortcuts.set(key, action),
             },
         },
         toolbar: { add_buttons_group: (buttons) => toolbarButtons.push(...buttons) },
@@ -1000,6 +1028,22 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
     return {
         channel: channel,
         opened: opened,
+        scrolledTo: scrolledTo,
+        selectedIndex: () => selected,
+        deleteCell(index) {
+            made.splice(index, 1);
+        },
+        // as nbclassic does when a delete is undone: a new cell object that keeps the old id
+        rebuildCell(index, source) {
+            made[index] = { ...made[index], get_text: () => source };
+        },
+        openWindow: (name) => windows.get(name),
+        // MutationObserver callbacks run as microtasks
+        async changeCellList() {
+            notebook.container.append("<div></div>");
+            await new Promise((resolve) => window.setTimeout(resolve, 0));
+        },
+        commandShortcuts: commandShortcuts,
         toolbarButtons: toolbarButtons,
         select(index) {
             selected = index;
@@ -1010,6 +1054,15 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
         },
         close: () => closePage(window),
     };
+}
+
+/**
+ * Load cell_dashboard's layout tree, which needs no page, as objects of this realm.
+ */
+function loadPaneTree() {
+    const window = {};
+    new Function("window", PANE_TREE_JS)(window);
+    return window.cellDashboardTree;
 }
 
 /**
@@ -1028,12 +1081,14 @@ function loadDashboardPage({ channelName }) {
     });
     const window = dom.window;
     const channel = fakeBroadcastChannel(window);
+    window.eval(PANE_TREE_JS);
     window.eval(DASHBOARD_JS);
 
     return {
         channel: channel,
-        title: () => window.document.getElementById("pane_title").textContent,
-        outputs: () => window.document.getElementById("pane_outputs"),
+        document: window.document,
+        title: () => window.document.querySelector(".pane_title").textContent,
+        outputs: () => window.document.querySelector(".pane_outputs"),
         close: () => closePage(window),
     };
 }
@@ -1046,6 +1101,7 @@ module.exports = {
     loadDashboardPage,
     loadGistIt,
     loadMinimap,
+    loadPaneTree,
     loadRise,
     loadRevealPlugin,
 };
