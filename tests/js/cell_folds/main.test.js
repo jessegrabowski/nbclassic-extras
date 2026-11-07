@@ -130,3 +130,41 @@ test("focusing a folded cell's editor reveals it and leaves the reading view", (
     assert.equal(folds.readingView(), false);
     assert.equal(first.focused, true);
 });
+
+test("the separate key system is the default, with shift acting on all cells", async (t) => {
+    const folds = loadCellFolds({ cells: [CODE] });
+    t.after(folds.close);
+    await folds.loaded;
+
+    assert.equal(new Set(folds.shortcuts.values()).size, 12);
+    assert.ok([...folds.shortcuts.values()].every((action) => folds.actions.has(action)));
+    assert.equal(folds.shortcuts.get("-"), "cell_folds:fold-input-of-selected");
+    assert.equal(folds.shortcuts.get("shift-="), "cell_folds:unfold-input-of-all");
+    assert.equal(folds.shortcuts.get("["), "cell_folds:fold-output-of-selected");
+    assert.equal(folds.shortcuts.get("'"), "cell_folds:unfold-joint-of-selected");
+});
+
+test("the chord key system replaces the separate keys", async (t) => {
+    const folds = loadCellFolds({ cells: [CODE],
+                                  config: { cell_folds_key_system: "chords" } });
+    t.after(folds.close);
+    await folds.loaded;
+
+    assert.equal(new Set(folds.shortcuts.values()).size, 12);
+    assert.ok([...folds.shortcuts.values()].every((action) => folds.actions.has(action)));
+    assert.equal(folds.shortcuts.get("cmdtrl--"), "cell_folds:fold-input-of-selected");
+    assert.equal(folds.shortcuts.get("shift-alt--"), "cell_folds:fold-output-of-all");
+    assert.equal(folds.shortcuts.get("cmdtrl-alt-="), "cell_folds:unfold-joint-of-selected");
+    assert.equal(folds.shortcuts.has("-"), false);
+});
+
+test("an unknown key system warns and falls back to the separate keys", async (t) => {
+    const warnings = t.mock.method(console, "warn", () => {});
+    const folds = loadCellFolds({ cells: [CODE], config: { cell_folds_key_system: "nope" } });
+    t.after(folds.close);
+    await folds.loaded;
+
+    assert.equal(folds.shortcuts.get("-"), "cell_folds:fold-input-of-selected");
+    assert.equal(warnings.mock.callCount(), 1);
+    assert.match(warnings.mock.calls[0].arguments[0], /nope/);
+});

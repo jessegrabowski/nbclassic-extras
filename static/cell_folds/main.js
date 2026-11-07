@@ -1,6 +1,7 @@
 /*
  * cell_folds: hide a code cell's input, its output, or both, on the selected cells or on every
- * cell. The extension registers named actions.
+ * cell. Each fold is a named action, and the cell_folds_key_system nbconfig setting picks which
+ * command-mode keys reach them. Holding shift acts on every cell.
  *
  * An input fold is a class on the cell, so it leaves the notebook clean and lasts for the session.
  * An output fold is nbclassic's own collapse, which is saved with the notebook. When every code
@@ -89,6 +90,21 @@ define([
         all: {label: 'all cells', cells: () => Jupyter.notebook.get_cells()},
     };
 
+    const DEFAULT_KEY_SYSTEM = 'separate';
+    const KEY_SYSTEMS = {
+        separate: {
+            input: {fold: '-', unfold: '='},
+            output: {fold: '[', unfold: ']'},
+            joint: {fold: ';', unfold: "'"},
+        },
+        chords: {
+            input: {fold: 'cmdtrl--', unfold: 'cmdtrl-='},
+            output: {fold: 'alt--', unfold: 'alt-='},
+            joint: {fold: 'cmdtrl-alt--', unfold: 'cmdtrl-alt-='},
+        },
+    };
+
+    const SCOPE_MODIFIERS = {selected: '', all: 'shift-'};
     const DIRECTIONS = ['fold', 'unfold'];
     const ACTION_PREFIX = 'cell_folds';
 
@@ -110,6 +126,28 @@ define([
         }
     }
 
+    function keySystem() {
+        let name = Jupyter.notebook.config.data.cell_folds_key_system || DEFAULT_KEY_SYSTEM;
+        if (Object.hasOwn(KEY_SYSTEMS, name)) {
+            return KEY_SYSTEMS[name];
+        }
+        console.warn(`cell_folds: unknown key system ${name}, using ${DEFAULT_KEY_SYSTEM}`);
+        return KEY_SYSTEMS[DEFAULT_KEY_SYSTEM];
+    }
+
+    function bindKeys() {
+        let shortcuts = Jupyter.keyboard_manager.command_shortcuts;
+        for (let [targetName, keys] of Object.entries(keySystem())) {
+            for (let [scopeName, modifier] of Object.entries(SCOPE_MODIFIERS)) {
+                for (let direction of DIRECTIONS) {
+                    shortcuts.add_shortcut(
+                        modifier + keys[direction],
+                        `${ACTION_PREFIX}:${actionName(direction, targetName, scopeName)}`);
+                }
+            }
+        }
+    }
+
     function revealOnEdit() {
         let focusEditor = CodeCell.prototype.focus_editor;
         CodeCell.prototype.focus_editor = function () {
@@ -122,6 +160,7 @@ define([
         loadStylesheet();
         registerActions();
         revealOnEdit();
+        return Jupyter.notebook.config.loaded.then(bindKeys);
     }
 
     return {
