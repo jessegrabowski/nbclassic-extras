@@ -3,6 +3,12 @@ div.cell.input_folded div.input div.inner_cell {
     display: none;
 }
 
+/* CodeMirror unfolds on mousedown on the marker, and a stray click must not undo a fold */
+.CodeMirror-foldmarker {
+    color: #777;
+    pointer-events: none;
+}
+
 /* jQuery's show() writes an inline display, so only !important can keep this button away */
 div.output_wrapper div.output_collapsed {
     display: none !important;

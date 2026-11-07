@@ -13,7 +13,8 @@ test("every target has fold and unfold actions on selected cells and on all cell
     t.after(folds.close);
     const expected = ["fold", "unfold"].flatMap((direction) =>
         ["input", "output", "joint"].flatMap((target) =>
-            ["selected", "all"].map((scope) => `cell_folds:${direction}-${target}-of-${scope}`)));
+            ["selected", "all"].map((scope) => `cell_folds:${direction}-${target}-of-${scope}`)))
+        .concat("cell_folds:fold-block", "cell_folds:unfold-block");
 
     assert.deepEqual([...folds.actions.keys()].sort(), expected.sort());
     assert.equal(folds.actions.get("cell_folds:fold-joint-of-all").help,
@@ -156,6 +157,19 @@ test("the chord key system replaces the separate keys", async (t) => {
     assert.equal(folds.shortcuts.get("shift-alt--"), "cell_folds:fold-output-of-all");
     assert.equal(folds.shortcuts.get("cmdtrl-alt-="), "cell_folds:unfold-joint-of-selected");
     assert.equal(folds.shortcuts.has("-"), false);
+});
+
+test("edit mode binds block folds under either key system", async (t) => {
+    for (const config of [{}, { cell_folds_key_system: "chords" }]) {
+        const folds = loadCellFolds({ cells: [CODE], config: config });
+        t.after(folds.close);
+        await folds.loaded;
+
+        assert.equal(folds.editShortcuts.size, 2);
+        assert.equal(folds.editShortcuts.get("cmdtrl--"), "cell_folds:fold-block");
+        assert.equal(folds.editShortcuts.get("cmdtrl-="), "cell_folds:unfold-block");
+        assert.ok([...folds.editShortcuts.values()].every((action) => folds.actions.has(action)));
+    }
 });
 
 test("an unknown key system warns and falls back to the separate keys", async (t) => {

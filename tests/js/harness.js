@@ -805,6 +805,7 @@ function loadCellFolds({ cells, config = {} }) {
 
     const actions = new Map();
     const shortcuts = new Map();
+    const editShortcuts = new Map();
     const keyboard_manager = {
         actions: {
             register(action, name, prefix) {
@@ -814,6 +815,11 @@ function loadCellFolds({ cells, config = {} }) {
         command_shortcuts: {
             add_shortcut(shortcut, action) {
                 shortcuts.set(shortcut, action);
+            },
+        },
+        edit_shortcuts: {
+            add_shortcut(shortcut, action) {
+                editShortcuts.set(shortcut, action);
             },
         },
     };
@@ -829,6 +835,7 @@ function loadCellFolds({ cells, config = {} }) {
         notebook: notebook,
         actions: actions,
         shortcuts: shortcuts,
+        editShortcuts: editShortcuts,
         loaded: loaded,
         run: (name) => actions.get(`cell_folds:${name}`).handler(),
         // as arrays of this realm

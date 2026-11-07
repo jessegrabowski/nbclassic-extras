@@ -50,6 +50,40 @@ def collapsed_output(page, index):
     return page.evaluate("(index) => Jupyter.notebook.get_cell(index).output_area.collapsed", index)
 
 
+FUNCTION_THEN_STATEMENT = "def f():\n    a = 1\n    b = 2\n\nc = 3"
+
+
+def edit_at_line(page, line):
+    # nbextensions load after the notebook reports itself loaded
+    page.wait_for_function(
+        "() => ['meta-minus', 'ctrl-minus'].some((shortcut) =>"
+        " Jupyter.keyboard_manager.edit_shortcuts.get_shortcut(shortcut) !== undefined)"
+    )
+    page.evaluate(
+        """(line) => {
+            Jupyter.notebook.select(0);
+            Jupyter.notebook.edit_mode();
+            Jupyter.notebook.get_cell(0).code_mirror.setCursor({line: line, ch: 0});
+        }""",
+        line,
+    )
+
+
+def folded_block_lines(page):
+    return page.evaluate(
+        """() => Jupyter.notebook.get_cell(0).code_mirror.getAllMarks()
+            .filter((mark) => mark.__isFold)
+            .map((mark) => [mark.find().from.line, mark.find().to.line])"""
+    )
+
+
+def folded_block_count(page):
+    return page.evaluate(
+        "() => Jupyter.notebook.get_cell(0).code_mirror.getAllMarks()"
+        ".filter((mark) => mark.__isFold).length"
+    )
+
+
 def test_a_folded_input_hides_the_editor_and_keeps_the_prompt_and_output(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code_with_output("first"), code("second")])
     page.evaluate("() => Jupyter.notebook.select(0)")
@@ -170,6 +204,106 @@ def test_running_a_folded_cell_keeps_it_folded_and_shows_its_output(nbclassic_se
     expect(page.locator(".output_area")).to_contain_text("fresh")
     assert folded_input(page, 0)
     assert page.evaluate("() => Jupyter.notebook.get_selected_index()") == 1
+
+
+def test_edit_mode_keys_fold_and_unfold_the_block_around_the_cursor(nbclassic_server, page):
+    # the kernel sets the editor's language mode, which block folding must work under
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)], wait_for_kernel=True)
+    edit_at_line(page, 1)
+
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    assert folded_block_count(page) == 1
+    expect(page.locator(".CodeMirror-foldmarker")).to_have_text("...")
+    expect(page.locator(".CodeMirror-code")).not_to_contain_text("b = 2")
+    text = page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()")
+    assert text == FUNCTION_THEN_STATEMENT
+    assert page.evaluate("() => Jupyter.notebook.mode") == "edit"
+
+    page.keyboard.press("ControlOrMeta+Equal")
+
+    assert folded_block_count(page) == 0
+    expect(page.locator(".CodeMirror-code")).to_contain_text("b = 2")
+
+
+def test_a_second_fold_of_the_same_block_changes_nothing(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 1)
+
+    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    assert folded_block_count(page) == 1
+
+
+def test_editing_after_a_fold_changes_the_visible_header_only(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 1)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    page.keyboard.press("Backspace")
+    page.keyboard.type(": # note")
+
+    expected = FUNCTION_THEN_STATEMENT.replace("def f():", "def f(): # note")
+    assert page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()") == expected
+    assert folded_block_count(page) == 1
+
+
+@pytest.mark.parametrize(
+    ("cursor_line", "folded_lines"),
+    [
+        pytest.param(2, [1, 3], id="inner_body_folds_the_inner_block"),
+        pytest.param(1, [1, 3], id="inner_header_folds_the_inner_block"),
+        pytest.param(4, [0, 4], id="line_after_the_inner_block_folds_the_outer_block"),
+        pytest.param(0, [0, 4], id="outer_header_folds_the_outer_block"),
+    ],
+)
+def test_the_fold_takes_the_innermost_block_around_the_cursor(
+    nbclassic_server, page, cursor_line, folded_lines
+):
+    source = "def f():\n    if a:\n        b\n        c\n    d\n\ne"
+    nbclassic_server.open_notebook(page, [code(source)])
+    edit_at_line(page, cursor_line)
+
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    assert folded_block_lines(page) == [folded_lines]
+
+
+def test_unfolding_one_block_leaves_the_others_folded(nbclassic_server, page):
+    source = "def f():\n    a\n    b\n\ndef g():\n    c\n    d"
+    nbclassic_server.open_notebook(page, [code(source)])
+    edit_at_line(page, 1)
+    page.keyboard.press("ControlOrMeta+Minus")
+    edit_at_line(page, 5)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    page.keyboard.press("ControlOrMeta+Equal")
+
+    assert folded_block_lines(page) == [[0, 2]]
+
+
+def test_a_line_outside_any_block_folds_nothing(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 4)
+
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    assert folded_block_count(page) == 0
+
+
+def test_clicks_and_arrow_keys_leave_a_folded_block_folded(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 0)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    marker = page.locator(".CodeMirror-foldmarker").bounding_box()
+    page.mouse.click(marker["x"] + marker["width"] / 2, marker["y"] + marker["height"] / 2)
+    page.keyboard.press("End")
+    page.keyboard.press("ArrowRight")
+    page.keyboard.press("ArrowDown")
+
+    assert folded_block_count(page) == 1
 
 
 @pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)

@@ -1,7 +1,8 @@
 /*
  * cell_folds: hide a code cell's input, its output, or both, on the selected cells or on every
  * cell. Each fold is a named action, and the cell_folds_key_system nbconfig setting picks which
- * command-mode keys reach them. Holding shift acts on every cell.
+ * command-mode keys reach them. Holding shift acts on every cell. In edit mode, Cmd-minus and
+ * Cmd-equals fold and unfold the code block at the cursor, whatever the setting.
  *
  * An input fold is a class on the cell, so it leaves the notebook clean and lasts for the session.
  * An output fold is nbclassic's own collapse, which is saved with the notebook. When every code
@@ -12,7 +13,10 @@ define([
     'jquery',
     'base/js/namespace',
     'notebook/js/codecell',
-], function (require, $, Jupyter, codecell) {
+    'codemirror/lib/codemirror',
+    'codemirror/addon/fold/foldcode',
+    'codemirror/addon/fold/indent-fold',
+], function (require, $, Jupyter, codecell, CodeMirror) {
     "use strict";
 
     const CodeCell = codecell.CodeCell;
@@ -108,6 +112,52 @@ define([
     const DIRECTIONS = ['fold', 'unfold'];
     const ACTION_PREFIX = 'cell_folds';
 
+    // scanUp also reaches blocks that end above the cursor, and those must not fold
+    function blockAroundCursor(editor, position) {
+        let block = CodeMirror.fold.indent(editor, position);
+        return block && block.to.line >= editor.getCursor().line ? block : undefined;
+    }
+
+    // leaving clearOnEnter on would let an arrow key unfold a block by moving into it
+    const BLOCK_FOLD_OPTIONS = {
+        rangeFinder: blockAroundCursor,
+        scanUp: true,
+        clearOnEnter: false,
+        widget: '...',
+    };
+
+    function selectedEditor() {
+        return Jupyter.notebook.get_selected_cell().code_mirror;
+    }
+
+    function foldsOnCursorLine(editor) {
+        let line = editor.getCursor().line;
+        return editor.findMarks({line: line, ch: 0}, {line: line + 1, ch: 0})
+            .filter((mark) => mark.__isFold);
+    }
+
+    function foldBlockAtCursor() {
+        let editor = selectedEditor();
+        if (foldsOnCursorLine(editor).length > 0) {
+            return;
+        }
+        editor.foldCode(editor.getCursor(), BLOCK_FOLD_OPTIONS, 'fold');
+        // CodeMirror leaves the cursor after the hidden text, on a line that cannot be seen
+        let [fold] = foldsOnCursorLine(editor);
+        if (fold) {
+            editor.setCursor(fold.find().from);
+        }
+    }
+
+    function unfoldBlockAtCursor() {
+        foldsOnCursorLine(selectedEditor()).forEach((mark) => mark.clear());
+    }
+
+    const BLOCK_DIRECTIONS = {
+        fold: {key: 'cmdtrl--', handler: foldBlockAtCursor},
+        unfold: {key: 'cmdtrl-=', handler: unfoldBlockAtCursor},
+    };
+
     function actionName(direction, targetName, scopeName) {
         return `${direction}-${targetName}-of-${scopeName}`;
     }
@@ -123,6 +173,12 @@ define([
                     }, actionName(direction, targetName, scopeName), ACTION_PREFIX);
                 }
             }
+        }
+        for (let [direction, {handler}] of Object.entries(BLOCK_DIRECTIONS)) {
+            actions.register({
+                help: `${direction} code block at the cursor`,
+                handler: handler,
+            }, `${direction}-block`, ACTION_PREFIX);
         }
     }
 
@@ -148,6 +204,13 @@ define([
         }
     }
 
+    function bindBlockKeys() {
+        let shortcuts = Jupyter.keyboard_manager.edit_shortcuts;
+        for (let [direction, {key}] of Object.entries(BLOCK_DIRECTIONS)) {
+            shortcuts.add_shortcut(key, `${ACTION_PREFIX}:${direction}-block`);
+        }
+    }
+
     function revealOnEdit() {
         let focusEditor = CodeCell.prototype.focus_editor;
         CodeCell.prototype.focus_editor = function () {
@@ -160,7 +223,10 @@ define([
         loadStylesheet();
         registerActions();
         revealOnEdit();
-        return Jupyter.notebook.config.loaded.then(bindKeys);
+        return Jupyter.notebook.config.loaded.then(() => {
+            bindKeys();
+            bindBlockKeys();
+        });
     }
 
     return {
