@@ -57,20 +57,20 @@ define([
         updateReadingView();
     }
 
-    function changeOutputs(cells, change) {
-        let changing = codeCells(cells);
-        changing.forEach(change);
+    function changeOutputs(cells, {collapsed}) {
+        let changing = codeCells(cells).filter((cell) => cell.output_area.collapsed !== collapsed);
+        changing.forEach((cell) => collapsed ? cell.collapse_output() : cell.expand_output());
         if (changing.length > 0) {
             Jupyter.notebook.set_dirty(true);
         }
     }
 
     function foldOutputs(cells) {
-        changeOutputs(cells, (cell) => cell.collapse_output());
+        changeOutputs(cells, {collapsed: true});
     }
 
     function unfoldOutputs(cells) {
-        changeOutputs(cells, (cell) => cell.expand_output());
+        changeOutputs(cells, {collapsed: false});
     }
 
     const TARGETS = {

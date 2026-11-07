@@ -119,6 +119,15 @@ test("an output fold with no code cell in scope leaves the notebook clean", (t) 
     assert.equal(folds.notebook.dirty, false);
 });
 
+test("an output change that changes nothing leaves the notebook clean", (t) => {
+    const folds = loadCellFolds({ cells: [SELECTED] });
+    t.after(folds.close);
+
+    folds.run("unfold-output-of-all");
+
+    assert.equal(folds.notebook.dirty, false);
+});
+
 test("focusing a folded cell's editor reveals it and leaves the reading view", (t) => {
     const folds = loadCellFolds({ cells: [CODE, CODE] });
     t.after(folds.close);

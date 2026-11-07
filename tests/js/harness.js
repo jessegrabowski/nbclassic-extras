@@ -648,7 +648,7 @@ function fakeCodeCellClass($, notebook) {
         constructor(outputHtml) {
             this.cell_type = "code";
             this.input_prompt_number = null;
-            this.outputCollapsed = false;
+            this.output_area = { collapsed: false };
             this.refreshes = 0;
             this.focused = false;
             this.element = $(`<div class="cell code_cell">
@@ -668,11 +668,11 @@ function fakeCodeCellClass($, notebook) {
         }
 
         collapse_output() {
-            this.outputCollapsed = true;
+            this.output_area.collapsed = true;
         }
 
         expand_output() {
-            this.outputCollapsed = false;
+            this.output_area.collapsed = false;
         }
 
         refresh() {
@@ -842,7 +842,7 @@ function loadCellFolds({ cells, config = {} }) {
         inputFolded: () => Array.from(notebook.get_cells(),
                                       (made) => made.element.hasClass("input_folded")),
         outputCollapsed: () => Array.from(notebook.get_cells(),
-                                          (made) => Boolean(made.outputCollapsed)),
+                                          (made) => Boolean(made.output_area?.collapsed)),
         readingView: () => $("body").hasClass("outputs_only"),
         close: () => closePage(window),
     };
