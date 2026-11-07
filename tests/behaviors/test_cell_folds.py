@@ -375,6 +375,17 @@ def test_removing_the_last_unfolded_code_cell_enters_the_reading_view(
     expect(page.locator("body")).to_have_class(has_class("outputs_only"))
 
 
+def test_the_reading_view_keeps_the_selected_cell_visible(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code_with_output("first"), code("no output")])
+    run_action(page, "fold-input-of-all")
+    no_output = page.locator(".code_cell").nth(1)
+    expect(no_output).to_be_hidden()
+
+    page.evaluate("() => Jupyter.notebook.select(1)")
+
+    expect(no_output).to_be_visible()
+
+
 @pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)
 def test_separate_keys_fold_and_unfold_the_selected_cell(
     nbclassic_server, page, fold, unfold, input_folds, output_folds

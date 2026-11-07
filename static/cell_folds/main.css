@@ -14,9 +14,12 @@ div.output_wrapper div.output_collapsed {
     display: none !important;
 }
 
-/* nbclassic's collapse leaves the output in place and hides it with an inline style */
-body.outputs_only div.cell.input_folded:not(:has(div.output_area)),
-body.outputs_only div.cell.input_folded:has(div.output[style*="none"]) {
+/*
+ * nbclassic's collapse leaves the output in place and hides it with an inline style. The selected
+ * cell stays, so keys never act on a cell no one can see.
+ */
+body.outputs_only div.cell.input_folded:not(.selected):not(:has(div.output_area)),
+body.outputs_only div.cell.input_folded:not(.selected):has(div.output[style*="none"]) {
     display: none;
 }
 
