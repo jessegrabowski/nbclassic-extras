@@ -13,7 +13,8 @@ test("every target has fold and unfold actions on selected cells and on all cell
     t.after(folds.close);
     const expected = ["fold", "unfold"].flatMap((direction) =>
         ["input", "output", "joint"].flatMap((target) =>
-            ["selected", "all"].map((scope) => `cell_folds:${direction}-${target}-of-${scope}`)));
+            ["selected", "all"].map((scope) => `cell_folds:${direction}-${target}-of-${scope}`)))
+        .concat("cell_folds:fold-block", "cell_folds:unfold-block");
 
     assert.deepEqual([...folds.actions.keys()].sort(), expected.sort());
     assert.equal(folds.actions.get("cell_folds:fold-joint-of-all").help,
@@ -78,36 +79,6 @@ test("a joint fold folds input and output together", (t) => {
     assert.deepEqual(folds.outputCollapsed(), [false, false]);
 });
 
-test("folding every code cell's input enters the reading view, ignoring text cells", (t) => {
-    const folds = loadCellFolds({ cells: [MARKDOWN, CODE, CODE] });
-    t.after(folds.close);
-
-    folds.run("fold-input-of-all");
-    assert.deepEqual(folds.inputFolded(), [false, true, true]);
-    assert.equal(folds.readingView(), true);
-
-    folds.run("unfold-input-of-all");
-    assert.equal(folds.readingView(), false);
-});
-
-test("folding some inputs stays out of the reading view", (t) => {
-    const folds = loadCellFolds({ cells: [SELECTED, CODE] });
-    t.after(folds.close);
-
-    folds.run("fold-input-of-selected");
-
-    assert.equal(folds.readingView(), false);
-});
-
-test("a notebook with no code cells never enters the reading view", (t) => {
-    const folds = loadCellFolds({ cells: [MARKDOWN] });
-    t.after(folds.close);
-
-    folds.run("fold-input-of-selected");
-
-    assert.equal(folds.readingView(), false);
-});
-
 test("an output fold with no code cell in scope leaves the notebook clean", (t) => {
     const folds = loadCellFolds({ cells: [MARKDOWN, CODE] });
     t.after(folds.close);
@@ -118,7 +89,16 @@ test("an output fold with no code cell in scope leaves the notebook clean", (t) 
     assert.equal(folds.notebook.dirty, false);
 });
 
-test("focusing a folded cell's editor reveals it and leaves the reading view", (t) => {
+test("an output change that changes nothing leaves the notebook clean", (t) => {
+    const folds = loadCellFolds({ cells: [SELECTED] });
+    t.after(folds.close);
+
+    folds.run("unfold-output-of-all");
+
+    assert.equal(folds.notebook.dirty, false);
+});
+
+test("focusing a folded cell's editor reveals it", (t) => {
     const folds = loadCellFolds({ cells: [CODE, CODE] });
     t.after(folds.close);
     const [first] = folds.notebook.get_cells();
@@ -127,7 +107,6 @@ test("focusing a folded cell's editor reveals it and leaves the reading view", (
     first.focus_editor();
 
     assert.deepEqual(folds.inputFolded(), [false, true]);
-    assert.equal(folds.readingView(), false);
     assert.equal(first.focused, true);
 });
 
@@ -152,10 +131,23 @@ test("the chord key system replaces the separate keys", async (t) => {
 
     assert.equal(new Set(folds.shortcuts.values()).size, 12);
     assert.ok([...folds.shortcuts.values()].every((action) => folds.actions.has(action)));
-    assert.equal(folds.shortcuts.get("cmdtrl--"), "cell_folds:fold-input-of-selected");
-    assert.equal(folds.shortcuts.get("shift-alt--"), "cell_folds:fold-output-of-all");
-    assert.equal(folds.shortcuts.get("cmdtrl-alt-="), "cell_folds:unfold-joint-of-selected");
+    assert.equal(folds.shortcuts.get("alt--"), "cell_folds:fold-input-of-selected");
+    assert.equal(folds.shortcuts.get("shift-alt-["), "cell_folds:fold-output-of-all");
+    assert.equal(folds.shortcuts.get("alt-'"), "cell_folds:unfold-joint-of-selected");
     assert.equal(folds.shortcuts.has("-"), false);
+});
+
+test("edit mode binds block folds under either key system", async (t) => {
+    for (const config of [{}, { cell_folds_key_system: "chords" }]) {
+        const folds = loadCellFolds({ cells: [CODE], config: config });
+        t.after(folds.close);
+        await folds.loaded;
+
+        assert.equal(folds.editShortcuts.size, 2);
+        assert.equal(folds.editShortcuts.get("alt--"), "cell_folds:fold-block");
+        assert.equal(folds.editShortcuts.get("alt-="), "cell_folds:unfold-block");
+        assert.ok([...folds.editShortcuts.values()].every((action) => folds.actions.has(action)));
+    }
 });
 
 test("an unknown key system warns and falls back to the separate keys", async (t) => {

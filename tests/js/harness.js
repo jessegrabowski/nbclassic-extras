@@ -648,7 +648,7 @@ function fakeCodeCellClass($, notebook) {
         constructor(outputHtml) {
             this.cell_type = "code";
             this.input_prompt_number = null;
-            this.outputCollapsed = false;
+            this.output_area = { collapsed: false, outputs: [] };
             this.refreshes = 0;
             this.focused = false;
             this.element = $(`<div class="cell code_cell">
@@ -668,11 +668,11 @@ function fakeCodeCellClass($, notebook) {
         }
 
         collapse_output() {
-            this.outputCollapsed = true;
+            this.output_area.collapsed = true;
         }
 
         expand_output() {
-            this.outputCollapsed = false;
+            this.output_area.collapsed = false;
         }
 
         refresh() {
@@ -801,10 +801,13 @@ function loadCellFolds({ cells, config = {} }) {
     });
     notebook.config = configSection(config);
     notebook.get_selected_cells = () => notebook.get_cells().filter((made) => made.selected);
+    notebook.get_selected_cell = () => notebook.get_cells()[0];
+    notebook.scroll_manager = { element: $("<div>") };
     notebook.command_mode = () => {};
 
     const actions = new Map();
     const shortcuts = new Map();
+    const editShortcuts = new Map();
     const keyboard_manager = {
         actions: {
             register(action, name, prefix) {
@@ -814,6 +817,11 @@ function loadCellFolds({ cells, config = {} }) {
         command_shortcuts: {
             add_shortcut(shortcut, action) {
                 shortcuts.set(shortcut, action);
+            },
+        },
+        edit_shortcuts: {
+            add_shortcut(shortcut, action) {
+                editShortcuts.set(shortcut, action);
             },
         },
     };
@@ -829,14 +837,14 @@ function loadCellFolds({ cells, config = {} }) {
         notebook: notebook,
         actions: actions,
         shortcuts: shortcuts,
+        editShortcuts: editShortcuts,
         loaded: loaded,
         run: (name) => actions.get(`cell_folds:${name}`).handler(),
         // as arrays of this realm
         inputFolded: () => Array.from(notebook.get_cells(),
                                       (made) => made.element.hasClass("input_folded")),
         outputCollapsed: () => Array.from(notebook.get_cells(),
-                                          (made) => Boolean(made.outputCollapsed)),
-        readingView: () => $("body").hasClass("outputs_only"),
+                                          (made) => Boolean(made.output_area?.collapsed)),
         close: () => closePage(window),
     };
 }

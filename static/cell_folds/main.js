@@ -1,23 +1,25 @@
 /*
  * cell_folds: hide a code cell's input, its output, or both, on the selected cells or on every
  * cell. Each fold is a named action, and the cell_folds_key_system nbconfig setting picks which
- * command-mode keys reach them. Holding shift acts on every cell.
+ * command-mode keys reach them. Holding shift acts on every cell. In edit mode, Alt-minus and
+ * Alt-equals fold and unfold the code block at the cursor, whatever the setting.
  *
  * An input fold is a class on the cell, so it leaves the notebook clean and lasts for the session.
- * An output fold is nbclassic's own collapse, which is saved with the notebook. When every code
- * cell's input is folded, the page becomes the outputs-only reading view.
+ * An output fold is nbclassic's own collapse, which is saved with the notebook.
  */
 define([
     'require',
     'jquery',
     'base/js/namespace',
     'notebook/js/codecell',
-], function (require, $, Jupyter, codecell) {
+    'codemirror/lib/codemirror',
+    'codemirror/addon/fold/foldcode',
+    'codemirror/addon/fold/indent-fold',
+], function (require, $, Jupyter, codecell, CodeMirror) {
     "use strict";
 
     const CodeCell = codecell.CodeCell;
     const INPUT_FOLDED = 'input_folded';
-    const OUTPUTS_ONLY = 'outputs_only';
 
     function loadStylesheet() {
         $('<link/>')
@@ -29,17 +31,10 @@ define([
         return cells.filter((cell) => cell instanceof CodeCell);
     }
 
-    function updateReadingView() {
-        let cells = codeCells(Jupyter.notebook.get_cells());
-        let allFolded = cells.every((cell) => cell.element.hasClass(INPUT_FOLDED));
-        $('body').toggleClass(OUTPUTS_ONLY, cells.length > 0 && allFolded);
-    }
-
     function foldInputs(cells) {
         // keystrokes must not land in an editor that can no longer be seen
         Jupyter.notebook.command_mode();
         codeCells(cells).forEach((cell) => cell.element.addClass(INPUT_FOLDED));
-        updateReadingView();
     }
 
     function unfoldInputs(cells) {
@@ -50,23 +45,22 @@ define([
                 // CodeMirror cannot measure itself while hidden
                 cell.refresh();
             });
-        updateReadingView();
     }
 
-    function changeOutputs(cells, change) {
-        let changing = codeCells(cells);
-        changing.forEach(change);
+    function changeOutputs(cells, {collapsed}) {
+        let changing = codeCells(cells).filter((cell) => cell.output_area.collapsed !== collapsed);
+        changing.forEach((cell) => collapsed ? cell.collapse_output() : cell.expand_output());
         if (changing.length > 0) {
             Jupyter.notebook.set_dirty(true);
         }
     }
 
     function foldOutputs(cells) {
-        changeOutputs(cells, (cell) => cell.collapse_output());
+        changeOutputs(cells, {collapsed: true});
     }
 
     function unfoldOutputs(cells) {
-        changeOutputs(cells, (cell) => cell.expand_output());
+        changeOutputs(cells, {collapsed: false});
     }
 
     const TARGETS = {
@@ -98,9 +92,9 @@ define([
             joint: {fold: ';', unfold: "'"},
         },
         chords: {
-            input: {fold: 'cmdtrl--', unfold: 'cmdtrl-='},
-            output: {fold: 'alt--', unfold: 'alt-='},
-            joint: {fold: 'cmdtrl-alt--', unfold: 'cmdtrl-alt-='},
+            input: {fold: 'alt--', unfold: 'alt-='},
+            output: {fold: 'alt-[', unfold: 'alt-]'},
+            joint: {fold: 'alt-;', unfold: "alt-'"},
         },
     };
 
@@ -108,8 +102,134 @@ define([
     const DIRECTIONS = ['fold', 'unfold'];
     const ACTION_PREFIX = 'cell_folds';
 
+    // scanUp also reaches blocks that end above the cursor, and those must not fold
+    function blockAroundCursor(editor, position) {
+        let block = CodeMirror.fold.indent(editor, position);
+        return block && block.to.line >= editor.getCursor().line ? block : undefined;
+    }
+
+    // leaving clearOnEnter on would let an arrow key unfold a block by moving into it
+    const BLOCK_FOLD_OPTIONS = {
+        rangeFinder: blockAroundCursor,
+        scanUp: true,
+        clearOnEnter: false,
+        widget: '...',
+    };
+
+    function selectedEditor() {
+        return Jupyter.notebook.get_selected_cell().code_mirror;
+    }
+
+    function foldsOnCursorLine(editor) {
+        let line = editor.getCursor().line;
+        return editor.findMarks({line: line, ch: 0}, {line: line + 1, ch: 0})
+            .filter((mark) => mark.__isFold);
+    }
+
+    function overlaps(mark, range) {
+        let {from, to} = mark.find();
+        return CodeMirror.cmpPos(range.from, to) < 0 && CodeMirror.cmpPos(from, range.to) < 0;
+    }
+
+    // nbclassic's Backspace command deletes with no change origin, and canceling an undo would
+    // empty the undo history, so only keystrokes qualify
+    function isDeleteKeystroke(change) {
+        let fromKey = !change.origin || change.origin === '+delete';
+        return fromKey && change.text.join('') === '';
+    }
+
+    // a fold is atomic, so a delete key beside it would delete or rejoin text no one can see
+    function unfoldInsteadOfDeleting(editor, change) {
+        if (!isDeleteKeystroke(change) || editor.somethingSelected()) {
+            return;
+        }
+        let folds = editor.findMarks(change.from, change.to)
+            .filter((mark) => mark.__isFold && overlaps(mark, change));
+        if (folds.length > 0) {
+            change.cancel();
+            // beforeChange handlers must not alter what the editor displays
+            setTimeout(() => folds.forEach((mark) => mark.clear()));
+        }
+    }
+
+    // with nothing selected, a cut takes the whole line, and the fold widens that to its block
+    function unfoldInsteadOfCuttingLine(editor, event) {
+        let folds = foldsOnCursorLine(editor);
+        if (!editor.somethingSelected() && folds.length > 0) {
+            event.preventDefault();
+            folds.forEach((mark) => mark.clear());
+        }
+    }
+
+    const guardedEditors = new WeakSet();
+
+    function guardFolds(editor) {
+        if (!guardedEditors.has(editor)) {
+            guardedEditors.add(editor);
+            editor.on('beforeChange', unfoldInsteadOfDeleting);
+            editor.on('cut', unfoldInsteadOfCuttingLine);
+        }
+    }
+
+    function foldBlockAtCursor() {
+        let editor = selectedEditor();
+        if (foldsOnCursorLine(editor).length > 0) {
+            return;
+        }
+        editor.foldCode(editor.getCursor(), BLOCK_FOLD_OPTIONS, 'fold');
+        let [fold] = foldsOnCursorLine(editor);
+        if (fold) {
+            guardFolds(editor);
+            // CodeMirror leaves the cursor after the hidden text, on a line that cannot be seen
+            editor.setCursor(fold.find().from);
+        }
+    }
+
+    function unfoldBlockAtCursor() {
+        foldsOnCursorLine(selectedEditor()).forEach((mark) => mark.clear());
+    }
+
+    const BLOCK_DIRECTIONS = {
+        fold: {key: 'alt--', handler: foldBlockAtCursor},
+        unfold: {key: 'alt-=', handler: unfoldBlockAtCursor},
+    };
+
     function actionName(direction, targetName, scopeName) {
         return `${direction}-${targetName}-of-${scopeName}`;
+    }
+
+    function isOnScreen(element, viewport) {
+        let {top, bottom} = element.getBoundingClientRect();
+        return bottom > viewport.top && top < viewport.bottom;
+    }
+
+    function hasOutput(cell) {
+        return cell instanceof CodeCell && cell.output_area.outputs.length > 0;
+    }
+
+    function anchorCell(viewport) {
+        let selected = Jupyter.notebook.get_selected_cell();
+        if (isOnScreen(selected.element[0], viewport)) {
+            return selected;
+        }
+        let onScreen = Jupyter.notebook.get_cells()
+            .filter((cell) => isOnScreen(cell.element[0], viewport));
+        return onScreen.find(hasOutput) || onScreen[0] || selected;
+    }
+
+    function anchorElement(cell, targetName) {
+        return targetName === 'input' && hasOutput(cell) ? cell.output_area.wrapper[0]
+                                                         : cell.element[0];
+    }
+
+    // holds still what the reader is looking at, which is the output when an input changes
+    function keepingPosition(targetName, change) {
+        let scroller = Jupyter.notebook.scroll_manager.element[0];
+        let viewport = scroller.getBoundingClientRect();
+        let anchor = anchorElement(anchorCell(viewport), targetName);
+        let topBefore = anchor.getBoundingClientRect().top;
+        change();
+        scroller.scrollTop += anchor.getBoundingClientRect().top - topBefore;
     }
 
     function registerActions() {
@@ -119,10 +239,17 @@ define([
                 for (let direction of DIRECTIONS) {
                     actions.register({
                         help: `${direction} ${target.label} of ${scope.label}`,
-                        handler: () => target[direction](scope.cells()),
+                        handler: () => keepingPosition(targetName,
+                                                       () => target[direction](scope.cells())),
                     }, actionName(direction, targetName, scopeName), ACTION_PREFIX);
                 }
             }
+        }
+        for (let [direction, {handler}] of Object.entries(BLOCK_DIRECTIONS)) {
+            actions.register({
+                help: `${direction} code block at the cursor`,
+                handler: handler,
+            }, `${direction}-block`, ACTION_PREFIX);
         }
     }
 
@@ -148,6 +275,13 @@ define([
         }
     }
 
+    function bindBlockKeys() {
+        let shortcuts = Jupyter.keyboard_manager.edit_shortcuts;
+        for (let [direction, {key}] of Object.entries(BLOCK_DIRECTIONS)) {
+            shortcuts.add_shortcut(key, `${ACTION_PREFIX}:${direction}-block`);
+        }
+    }
+
     function revealOnEdit() {
         let focusEditor = CodeCell.prototype.focus_editor;
         CodeCell.prototype.focus_editor = function () {
@@ -156,11 +290,24 @@ define([
         };
     }
 
+    // nbclassic toggles an output on a double click of its prompt overlay, and folds take no clicks
+    function ignorePromptDoubleClicks() {
+        Jupyter.notebook.container[0].addEventListener('dblclick', (event) => {
+            if (event.target.closest('.out_prompt_overlay')) {
+                event.stopPropagation();
+            }
+        }, true);
+    }
+
     function load_jupyter_extension() {
         loadStylesheet();
         registerActions();
         revealOnEdit();
-        return Jupyter.notebook.config.loaded.then(bindKeys);
+        ignorePromptDoubleClicks();
+        return Jupyter.notebook.config.loaded.then(() => {
+            bindKeys();
+            bindBlockKeys();
+        });
     }
 
     return {
