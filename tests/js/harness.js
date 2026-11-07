@@ -1,7 +1,8 @@
 // Loads static/rise/main.js, static/gist_it/main.js, static/cell_ids/main.js,
-// static/cell_folds/main.js, or static/minimap/main.js in a jsdom page with nbclassic's own jQuery
-// and a fake Jupyter whose notebook, config, actions, and dialogs hold state. Tests drive each
-// extension only through what it registers and assert on the resulting DOM and Jupyter state.
+// static/cell_folds/main.js, static/minimap/main.js, or static/cell_dashboard/main.js in a jsdom
+// page with nbclassic's own jQuery and a fake Jupyter whose notebook, config, actions, and dialogs
+// hold state. Tests drive each extension only through what it registers and assert on the
+// resulting DOM and Jupyter state. loadDashboardPage loads the cell_dashboard window's own page.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -14,6 +15,11 @@ const CELL_IDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_ids", "
 const CELL_FOLDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_folds", "main.js"),
                                       "utf8");
 const MINIMAP_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "minimap", "main.js"), "utf8");
+const DASHBOARD_DIR = path.join(REPO_ROOT, "static", "cell_dashboard");
+const CELL_DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "main.js"), "utf8");
+const DASHBOARD_HTML = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.html"), "utf8");
+const DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.js"), "utf8");
+const PANE_TREE_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "tree.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -932,12 +938,170 @@ function loadMinimap({ scrollHeight, clientHeight, hidden = false, storageBlocke
     };
 }
 
+// jsdom has no BroadcastChannel. This one keeps a clone of what its page posts, as a real channel
+// would deliver it, and `deliver` hands it a message as if another page had posted it.
+function fakeBroadcastChannel(window) {
+    const channel = {
+        name: null,
+        posted: [],
+        postMessage: (data) => channel.posted.push(structuredClone(data)),
+        deliver: (data) => channel.onmessage({ data: data }),
+    };
+    window.BroadcastChannel = function (name) {
+        channel.name = name;
+        return channel;
+    };
+    return channel;
+}
+
+/**
+ * Load cell_dashboard into a fresh page holding `cells`, whose selection `select` changes.
+ *
+ * @param {object} options
+ * @param {Array} options.cells - {cellType, source, outputs, trusted} for each cell.
+ * @param {string} [options.notebookPath] - the notebook's path on the server.
+ */
+function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
+    const { window, $, notebook, closePage } = notebookPage([]);
+    const channel = fakeBroadcastChannel(window);
+    // like a browser, opening a name that is already open returns that window as it is
+    const opened = [];
+    const windows = new Map();
+    window.open = (url, name, features) => {
+        if (!windows.has(name)) {
+            windows.set(name, {
+                location: { href: "about:blank" },
+                closed: false,
+                focused: 0,
+                focus() {
+                    this.focused += 1;
+                },
+            });
+        }
+        opened.push({ url: url, name: name, features: features });
+        return windows.get(name);
+    };
+
+    const made = cells.map((spec, index) => ({
+        id: `cell-${index}`,
+        cell_type: spec.cellType ?? "code",
+        get_text: () => spec.source ?? "",
+        output_area: { trusted: spec.trusted ?? true, toJSON: () => spec.outputs ?? [] },
+    }));
+    let selected = 0;
+    const scrolledTo = [];
+    notebook.notebook_path = notebookPath;
+    notebook.base_url = "/";
+    notebook.events = new FakeEvents();
+    notebook.get_selected_cell = () => made[selected];
+    notebook.get_cells = () => made;
+    notebook.get_cell = (index) => made[index];
+    notebook.select = (index) => {
+        selected = index;
+    };
+    notebook.scroll_to_cell = (index) => scrolledTo.push(index);
+
+    const actions = new Map();
+    const commandShortcuts = new Map();
+    const toolbarButtons = [];
+    const jupyter = {
+        notebook: notebook,
+        keyboard_manager: {
+            actions: {
+                register(action, name, prefix) {
+                    actions.set(`${prefix}:${name}`, action);
+                    return `${prefix}:${name}`;
+                },
+            },
+            command_shortcuts: {
+                add_shortcut: (key, action) => commandShortcuts.set(key, action),
+            },
+        },
+        toolbar: { add_buttons_group: (buttons) => toolbarButtons.push(...buttons) },
+    };
+    const utils = {
+        url_path_join: (...parts) => parts.join("/").replace(/\/+/g, "/"),
+        fixOverwrittenChars: (text) => text,
+    };
+    defineExtension(window, CELL_DASHBOARD_JS)(jupyter, utils).load_jupyter_extension();
+
+    return {
+        channel: channel,
+        opened: opened,
+        scrolledTo: scrolledTo,
+        selectedIndex: () => selected,
+        deleteCell(index) {
+            made.splice(index, 1);
+        },
+        // as nbclassic does when a delete is undone: a new cell object that keeps the old id
+        rebuildCell(index, source) {
+            made[index] = { ...made[index], get_text: () => source };
+        },
+        openWindow: (name) => windows.get(name),
+        // MutationObserver callbacks run as microtasks
+        async changeCellList() {
+            notebook.container.append("<div></div>");
+            await new Promise((resolve) => window.setTimeout(resolve, 0));
+        },
+        commandShortcuts: commandShortcuts,
+        toolbarButtons: toolbarButtons,
+        select(index) {
+            selected = index;
+        },
+        run: (name) => actions.get(`cell_dashboard:${name}`).handler(),
+        finishRunning(index) {
+            notebook.events.trigger("finished_execute.CodeCell", { cell: made[index] });
+        },
+        close: () => closePage(window),
+    };
+}
+
+/**
+ * Load cell_dashboard's layout tree, which needs no page, as objects of this realm.
+ */
+function loadPaneTree() {
+    const window = {};
+    new Function("window", PANE_TREE_JS)(window);
+    return window.cellDashboardTree;
+}
+
+/**
+ * Load the cell_dashboard window's page, listening on the channel named in its address.
+ *
+ * @param {object} options
+ * @param {string} options.channelName - the channel the notebook gave the window.
+ */
+function loadDashboardPage({ channelName }) {
+    const { virtualConsole, closePage } = strictConsole();
+    const query = `channel=${encodeURIComponent(channelName)}`;
+    const dom = new JSDOM(DASHBOARD_HTML, {
+        url: `http://localhost:8888/nbextensions/cell_dashboard/dashboard.html?${query}`,
+        runScripts: "outside-only",
+        virtualConsole: virtualConsole,
+    });
+    const window = dom.window;
+    const channel = fakeBroadcastChannel(window);
+    window.eval(PANE_TREE_JS);
+    window.eval(DASHBOARD_JS);
+
+    return {
+        channel: channel,
+        document: window.document,
+        title: () => window.document.querySelector(".pane_title").textContent,
+        outputs: () => window.document.querySelector(".pane_outputs"),
+        close: () => closePage(window),
+    };
+}
+
 module.exports = {
     cell,
+    loadCellDashboard,
     loadCellFolds,
     loadCellIds,
+    loadDashboardPage,
     loadGistIt,
     loadMinimap,
+    loadPaneTree,
     loadRise,
     loadRevealPlugin,
 };
