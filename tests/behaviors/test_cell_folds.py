@@ -22,22 +22,16 @@ def code_with_output(source):
 def press_on_second_of_two_cells(page, key):
     # nbextensions load after the notebook reports itself loaded
     page.wait_for_function(
-        "() => ['shift-;', 'alt-shift-minus'].some((shortcut) =>"
-        " Jupyter.keyboard_manager.command_shortcuts.get_shortcut(shortcut) !== undefined)"
+        "() => Jupyter.keyboard_manager.command_shortcuts.get_shortcut('shift-;') !== undefined"
     )
     page.evaluate("() => { Jupyter.notebook.select(1); Jupyter.notebook.command_mode(); }")
     page.keyboard.press(key)
 
 
-SEPARATE_KEYS = [
+FOLD_KEYS = [
     pytest.param("Minus", "Equal", True, False, id="input"),
     pytest.param("BracketLeft", "BracketRight", False, True, id="output"),
     pytest.param("Semicolon", "Quote", True, True, id="joint"),
-]
-CHORD_KEYS = [
-    pytest.param("Alt+Minus", "Alt+Equal", True, False, id="input"),
-    pytest.param("Alt+BracketLeft", "Alt+BracketRight", False, True, id="output"),
-    pytest.param("Alt+Semicolon", "Alt+Quote", True, True, id="joint"),
 ]
 
 
@@ -516,8 +510,8 @@ def test_folding_all_inputs_holds_the_screen_when_the_selected_cell_is_elsewhere
     assert abs(shift) <= 1
 
 
-@pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)
-def test_separate_keys_fold_and_unfold_the_selected_cell(
+@pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), FOLD_KEYS)
+def test_fold_keys_fold_and_unfold_the_selected_cell(
     nbclassic_server, page, fold, unfold, input_folds, output_folds
 ):
     nbclassic_server.open_notebook(page, [code("first"), code_with_output("second")])
@@ -534,8 +528,8 @@ def test_separate_keys_fold_and_unfold_the_selected_cell(
     assert not collapsed_output(page, 1)
 
 
-@pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)
-def test_shift_with_a_separate_key_folds_every_cell(
+@pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), FOLD_KEYS)
+def test_shift_with_a_fold_key_acts_on_every_cell(
     nbclassic_server, page, fold, unfold, input_folds, output_folds
 ):
     nbclassic_server.open_notebook(page, [code("first"), code_with_output("second")])
@@ -551,50 +545,3 @@ def test_shift_with_a_separate_key_folds_every_cell(
 
     assert not folded_input(page, 0)
     assert not collapsed_output(page, 0)
-
-
-@pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), CHORD_KEYS)
-def test_chords_fold_and_unfold_the_selected_cell(
-    nbclassic_server, page, fold, unfold, input_folds, output_folds
-):
-    nbclassic_server.patch_nbconfig("notebook", {"cell_folds_key_system": "chords"})
-    try:
-        nbclassic_server.open_notebook(page, [code("first"), code_with_output("second")])
-
-        press_on_second_of_two_cells(page, fold)
-
-        assert folded_input(page, 1) == input_folds
-        assert collapsed_output(page, 1) == output_folds
-        assert not folded_input(page, 0)
-
-        page.keyboard.press(unfold)
-
-        assert not folded_input(page, 1)
-        assert not collapsed_output(page, 1)
-    finally:
-        nbclassic_server.patch_nbconfig("notebook", {"cell_folds_key_system": None})
-
-
-def test_chord_system_leaves_the_separate_keys_unbound(nbclassic_server, page):
-    nbclassic_server.patch_nbconfig("notebook", {"cell_folds_key_system": "chords"})
-    try:
-        nbclassic_server.open_notebook(page, [code("first"), code("second")])
-
-        press_on_second_of_two_cells(page, "Minus")
-
-        assert not folded_input(page, 1)
-    finally:
-        nbclassic_server.patch_nbconfig("notebook", {"cell_folds_key_system": None})
-
-
-def test_shift_with_a_chord_folds_every_cell(nbclassic_server, page):
-    nbclassic_server.patch_nbconfig("notebook", {"cell_folds_key_system": "chords"})
-    try:
-        nbclassic_server.open_notebook(page, [code("first"), code("second")])
-
-        press_on_second_of_two_cells(page, "Alt+Shift+Minus")
-
-        assert folded_input(page, 0)
-        assert folded_input(page, 1)
-    finally:
-        nbclassic_server.patch_nbconfig("notebook", {"cell_folds_key_system": None})

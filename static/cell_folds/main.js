@@ -1,8 +1,7 @@
 /*
  * cell_folds: hide a code cell's input, its output, or both, on the selected cells or on every
- * cell. Each fold is a named action, and the cell_folds_key_system nbconfig setting picks which
- * command-mode keys reach them. Holding shift acts on every cell. In edit mode, Alt-minus and
- * Alt-equals fold and unfold the code block at the cursor, whatever the setting.
+ * cell. Each fold is a named action bound to a command-mode key, and holding shift acts on every
+ * cell. In edit mode, Alt-minus and Alt-equals fold and unfold the code block at the cursor.
  *
  * An input fold is a class on the cell, so it leaves the notebook clean and lasts for the session.
  * An output fold is nbclassic's own collapse, which is saved with the notebook.
@@ -84,18 +83,10 @@ define([
         all: {label: 'all cells', cells: () => Jupyter.notebook.get_cells()},
     };
 
-    const DEFAULT_KEY_SYSTEM = 'separate';
-    const KEY_SYSTEMS = {
-        separate: {
-            input: {fold: '-', unfold: '='},
-            output: {fold: '[', unfold: ']'},
-            joint: {fold: ';', unfold: "'"},
-        },
-        chords: {
-            input: {fold: 'alt--', unfold: 'alt-='},
-            output: {fold: 'alt-[', unfold: 'alt-]'},
-            joint: {fold: 'alt-;', unfold: "alt-'"},
-        },
+    const COMMAND_KEYS = {
+        input: {fold: '-', unfold: '='},
+        output: {fold: '[', unfold: ']'},
+        joint: {fold: ';', unfold: "'"},
     };
 
     const SCOPE_MODIFIERS = {selected: '', all: 'shift-'};
@@ -253,18 +244,9 @@ define([
         }
     }
 
-    function keySystem() {
-        let name = Jupyter.notebook.config.data.cell_folds_key_system || DEFAULT_KEY_SYSTEM;
-        if (Object.hasOwn(KEY_SYSTEMS, name)) {
-            return KEY_SYSTEMS[name];
-        }
-        console.warn(`cell_folds: unknown key system ${name}, using ${DEFAULT_KEY_SYSTEM}`);
-        return KEY_SYSTEMS[DEFAULT_KEY_SYSTEM];
-    }
-
     function bindKeys() {
         let shortcuts = Jupyter.keyboard_manager.command_shortcuts;
-        for (let [targetName, keys] of Object.entries(keySystem())) {
+        for (let [targetName, keys] of Object.entries(COMMAND_KEYS)) {
             for (let [scopeName, modifier] of Object.entries(SCOPE_MODIFIERS)) {
                 for (let direction of DIRECTIONS) {
                     shortcuts.add_shortcut(
@@ -304,10 +286,8 @@ define([
         registerActions();
         revealOnEdit();
         ignorePromptDoubleClicks();
-        return Jupyter.notebook.config.loaded.then(() => {
-            bindKeys();
-            bindBlockKeys();
-        });
+        bindKeys();
+        bindBlockKeys();
     }
 
     return {
