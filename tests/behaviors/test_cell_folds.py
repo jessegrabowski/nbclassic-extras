@@ -47,9 +47,7 @@ def folded_input(page, index):
 
 
 def collapsed_output(page, index):
-    return page.evaluate(
-        "(index) => Jupyter.notebook.get_cell(index).output_area.collapsed", index
-    )
+    return page.evaluate("(index) => Jupyter.notebook.get_cell(index).output_area.collapsed", index)
 
 
 def test_a_folded_input_hides_the_editor_and_keeps_the_prompt_and_output(nbclassic_server, page):
