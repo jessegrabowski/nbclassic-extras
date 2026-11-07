@@ -1,3 +1,4 @@
+import nbformat
 from nbformat.v4 import new_output
 from playwright.sync_api import expect
 import pytest
@@ -414,6 +415,15 @@ def test_cutting_with_no_selection_beside_a_fold_unfolds_it_and_keeps_the_text(
     assert text == FUNCTION_THEN_STATEMENT
 
 
+def test_block_folds_also_work_in_markdown_cells(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("- a\n    - b\n    - c", "")])
+    edit_at_line(page, 1)
+
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    assert folded_block_lines(page) == [[0, 2]]
+
+
 def test_double_clicking_an_output_prompt_does_not_fold_it(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code_with_output("first")])
     page.wait_for_function("() => Jupyter.keyboard_manager.actions.exists('cell_folds:fold-block')")
@@ -421,6 +431,33 @@ def test_double_clicking_an_output_prompt_does_not_fold_it(nbclassic_server, pag
     page.locator(".out_prompt_overlay").dblclick(force=True)
 
     assert not collapsed_output(page, 0)
+
+
+def test_o_leaves_no_expand_button(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code("first"), code_with_output("second")])
+
+    press_on_second_of_two_cells(page, "o")
+
+    assert collapsed_output(page, 1)
+    expect(page.locator(".code_cell").nth(1).locator(".output_collapsed")).to_be_hidden()
+
+
+def test_saving_keeps_output_folds_and_drops_input_folds(nbclassic_server, page):
+    name = nbclassic_server.open_notebook(page, [code("first"), code_with_output("second")])
+    press_on_second_of_two_cells(page, "Semicolon")
+
+    page.evaluate("() => Jupyter.notebook.save_notebook()")
+
+    saved = nbformat.read(nbclassic_server.notebook_dir / name, as_version=4)
+    assert saved.cells[1].metadata["collapsed"] is True
+
+    page.reload()
+    page.wait_for_function(
+        "() => !!(window.Jupyter && Jupyter.notebook && Jupyter.notebook._fully_loaded)"
+    )
+
+    assert collapsed_output(page, 1)
+    assert not folded_input(page, 1)
 
 
 def test_inserting_a_cell_leaves_the_reading_view(nbclassic_server, page):
@@ -463,6 +500,17 @@ def test_the_reading_view_keeps_the_selected_cell_visible(nbclassic_server, page
     page.evaluate("() => Jupyter.notebook.select(1)")
 
     expect(no_output).to_be_visible()
+
+
+def test_running_a_cell_with_a_folded_output_shows_the_new_output(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code("print('fresh')")], wait_for_kernel=True)
+    page.evaluate("() => Jupyter.notebook.select(0)")
+    run_action(page, "fold-output-of-selected")
+
+    page.evaluate("() => Jupyter.notebook.execute_cells([0])")
+
+    expect(page.locator(".output_area")).to_contain_text("fresh")
+    assert not collapsed_output(page, 0)
 
 
 @pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)
