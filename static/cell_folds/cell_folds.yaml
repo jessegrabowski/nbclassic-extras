@@ -1,0 +1,10 @@
+Type: Jupyter Notebook Extension
+Compatibility: 5.x, 6.x
+Name: Cell folds
+Main: main.js
+Description: Adds actions and command-mode keys that fold a code cell's input, its output, or both, on the selected cells or on every cell. Folding every input gives an outputs-only reading view.
+Parameters:
+- name: cell_folds_key_system
+  description: Which command-mode keys fold cells, "separate" for plain keys or "chords" for modifier chords.
+  input_type: text
+  default: separate
