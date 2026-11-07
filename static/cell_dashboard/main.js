@@ -18,11 +18,19 @@ define([
         return `${page}?channel=${encodeURIComponent(channelName)}`;
     }
 
+    // a stream is stored as it arrived, and nbclassic applies its overwrites only when it draws
+    function asDrawn(output) {
+        if (output.output_type !== 'stream') {
+            return output;
+        }
+        return {...output, text: utils.fixOverwrittenChars(output.text)};
+    }
+
     function paneMessage(cell) {
         return {
             type: 'pane',
             title: cell.get_text().split('\n')[0],
-            outputs: cell.output_area.toJSON(),
+            outputs: cell.output_area.toJSON().map(asDrawn),
             trusted: cell.output_area.trusted,
         };
     }
@@ -64,6 +72,11 @@ define([
                 sendLinkedCell();
             }
         };
+        Jupyter.notebook.events.on('finished_execute.CodeCell', (event, {cell}) => {
+            if (cell === linkedCell) {
+                sendLinkedCell();
+            }
+        });
         registerActions(channelName, linkCell);
     }
 

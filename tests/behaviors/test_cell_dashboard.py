@@ -20,6 +20,10 @@ def open_dashboard(page):
     return popup.value
 
 
+def run_cell(page, index):
+    page.evaluate(f"() => Jupyter.notebook.execute_cells([{index}])")
+
+
 def test_a_sent_cell_shows_its_title_and_output(nbclassic_server, page):
     cell = code("print('one')\nprint('two')")
     cell.outputs = [new_output("stream", name="stdout", text="one\ntwo\n")]
@@ -93,6 +97,52 @@ def test_an_image_stretches_to_fill_the_window(nbclassic_server, page, data):
     box = image.bounding_box()
     assert box["width"] > 700
     assert box["height"] > 450
+
+
+def test_running_a_linked_cell_refreshes_its_pane(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code("print('one')")], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    button(page, "send-cell-to-dashboard").click()
+    run_cell(page, 0)
+    expect(dashboard.locator("#pane_outputs pre")).to_have_text("one\n")
+
+    page.evaluate("() => Jupyter.notebook.get_cell(0).set_text(\"print('two')\")")
+    run_cell(page, 0)
+
+    expect(dashboard.locator("#pane_outputs pre")).to_have_text("two\n")
+    expect(dashboard.locator("#pane_title")).to_have_text("print('two')")
+
+
+def test_a_stream_shows_what_its_carriage_returns_left(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(r"print('old text\rnew')")], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    button(page, "send-cell-to-dashboard").click()
+
+    run_cell(page, 0)
+
+    expect(dashboard.locator("#pane_outputs pre")).to_have_text("new text\n")
+
+
+def test_a_failed_run_shows_its_traceback(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code("1 / 0")], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    button(page, "send-cell-to-dashboard").click()
+
+    run_cell(page, 0)
+
+    expect(dashboard.locator("#pane_outputs pre")).to_contain_text("ZeroDivisionError")
+    expect(dashboard.locator("#pane_outputs pre")).not_to_contain_text("\x1b")
+
+
+def test_a_table_from_a_run_shows_as_a_table(nbclassic_server, page):
+    source = "from IPython.display import HTML\nHTML('<table><tr><td>value</td></tr></table>')"
+    nbclassic_server.open_notebook(page, [code(source)], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    button(page, "send-cell-to-dashboard").click()
+
+    run_cell(page, 0)
+
+    expect(dashboard.locator("#pane_outputs td")).to_have_text("value")
 
 
 def test_html_saved_in_an_untrusted_notebook_shows_as_text(nbclassic_server, page):

@@ -46,6 +46,32 @@ test("sending a code cell posts its first line, outputs, and trust", (t) => {
     }]);
 });
 
+test("sending a markdown cell posts nothing and keeps the linked cell", (t) => {
+    const dashboard = loadCellDashboard({
+        cells: [{ source: "a = 1" }, { cellType: "markdown", source: "# Title" }],
+    });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    dashboard.select(1);
+
+    dashboard.run("send-cell-to-dashboard");
+    dashboard.finishRunning(0);
+
+    assert.deepEqual(dashboard.channel.posted.map(({ title }) => title), ["a = 1", "a = 1"]);
+});
+
+test("only the linked cell finishing sends a refresh", (t) => {
+    const dashboard = loadCellDashboard({ cells: [{ source: "a = 1" }, { source: "b = 2" }] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+
+    dashboard.finishRunning(1);
+    assert.equal(dashboard.channel.posted.length, 1);
+
+    dashboard.finishRunning(0);
+    assert.equal(dashboard.channel.posted.length, 2);
+});
+
 test("a dashboard that announces itself gets the linked cell", (t) => {
     const dashboard = loadCellDashboard({ cells: [{ source: "a = 1" }] });
     t.after(dashboard.close);
