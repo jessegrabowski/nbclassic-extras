@@ -63,6 +63,8 @@ packages = ["nbclassic_extras"]
 "jupyter-config/notebook.d/cell_folds.json" = "etc/jupyter/nbconfig/notebook.d/cell_folds.json"
 "static/minimap" = "share/jupyter/nbextensions/minimap"
 "jupyter-config/notebook.d/minimap.json" = "etc/jupyter/nbconfig/notebook.d/minimap.json"
+"static/cell_dashboard" = "share/jupyter/nbextensions/cell_dashboard"
+"jupyter-config/notebook.d/cell_dashboard.json" = "etc/jupyter/nbconfig/notebook.d/cell_dashboard.json"
 "jupyter-config/jupyter_server_config.d/nbclassic_extras.json" = "etc/jupyter/jupyter_server_config.d/nbclassic_extras.json"
 
 [tool.pytest.ini_options]

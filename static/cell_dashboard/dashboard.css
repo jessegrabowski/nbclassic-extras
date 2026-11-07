@@ -1,0 +1,66 @@
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    color: #333;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+#pane {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 8px;
+}
+
+#pane_title {
+    border-bottom: 1px solid #ddd;
+    color: #777;
+    flex: none;
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: normal;
+    margin: 0 0 8px;
+    overflow: hidden;
+    padding-bottom: 4px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#pane_outputs {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* a plot grows to fill the window and keeps its shape */
+#pane_outputs img {
+    flex: 1 1 0;
+    min-height: 0;
+    object-fit: contain;
+    width: 100%;
+}
+
+#pane_outputs pre {
+    flex: none;
+    font-size: 13px;
+    margin: 0 0 4px;
+}
+
+#pane_outputs table {
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+#pane_outputs td,
+#pane_outputs th {
+    border: 1px solid #ddd;
+    padding: 2px 8px;
+    text-align: right;
+}

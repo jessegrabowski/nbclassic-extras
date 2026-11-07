@@ -1,0 +1,5 @@
+Type: Jupyter Notebook Extension
+Compatibility: 5.x, 6.x
+Name: Cell dashboard
+Main: main.js
+Description: Opens a window for a second screen that shows a code cell's outputs and refreshes them when the cell runs again.

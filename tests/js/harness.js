@@ -1,7 +1,8 @@
 // Loads static/rise/main.js, static/gist_it/main.js, static/cell_ids/main.js,
-// static/cell_folds/main.js, or static/minimap/main.js in a jsdom page with nbclassic's own jQuery
-// and a fake Jupyter whose notebook, config, actions, and dialogs hold state. Tests drive each
-// extension only through what it registers and assert on the resulting DOM and Jupyter state.
+// static/cell_folds/main.js, static/minimap/main.js, or static/cell_dashboard/main.js in a jsdom
+// page with nbclassic's own jQuery and a fake Jupyter whose notebook, config, actions, and dialogs
+// hold state. Tests drive each extension only through what it registers and assert on the
+// resulting DOM and Jupyter state. loadDashboardPage loads the cell_dashboard window's own page.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -14,6 +15,10 @@ const CELL_IDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_ids", "
 const CELL_FOLDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_folds", "main.js"),
                                       "utf8");
 const MINIMAP_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "minimap", "main.js"), "utf8");
+const DASHBOARD_DIR = path.join(REPO_ROOT, "static", "cell_dashboard");
+const CELL_DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "main.js"), "utf8");
+const DASHBOARD_HTML = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.html"), "utf8");
+const DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -932,10 +937,113 @@ function loadMinimap({ scrollHeight, clientHeight, hidden = false, storageBlocke
     };
 }
 
+// jsdom has no BroadcastChannel. This one keeps a clone of what its page posts, as a real channel
+// would deliver it, and `deliver` hands it a message as if another page had posted it.
+function fakeBroadcastChannel(window) {
+    const channel = {
+        name: null,
+        posted: [],
+        postMessage: (data) => channel.posted.push(structuredClone(data)),
+        deliver: (data) => channel.onmessage({ data: data }),
+    };
+    window.BroadcastChannel = function (name) {
+        channel.name = name;
+        return channel;
+    };
+    return channel;
+}
+
+/**
+ * Load cell_dashboard into a fresh page holding `cells`, whose selection `select` changes.
+ *
+ * @param {object} options
+ * @param {Array} options.cells - {cellType, source, outputs, trusted} for each cell.
+ * @param {string} [options.notebookPath] - the notebook's path on the server.
+ */
+function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
+    const { window, $, notebook, closePage } = notebookPage([]);
+    const channel = fakeBroadcastChannel(window);
+    const opened = [];
+    window.open = (url, name) => opened.push({ url: url, name: name });
+
+    const made = cells.map(({ cellType = "code", source = "", outputs = [], trusted = true }) => ({
+        cell_type: cellType,
+        get_text: () => source,
+        output_area: { trusted: trusted, toJSON: () => outputs },
+    }));
+    let selected = 0;
+    notebook.notebook_path = notebookPath;
+    notebook.base_url = "/";
+    notebook.events = new FakeEvents();
+    notebook.get_selected_cell = () => made[selected];
+
+    const actions = new Map();
+    const toolbarButtons = [];
+    const jupyter = {
+        notebook: notebook,
+        keyboard_manager: {
+            actions: {
+                register(action, name, prefix) {
+                    actions.set(`${prefix}:${name}`, action);
+                    return `${prefix}:${name}`;
+                },
+            },
+        },
+        toolbar: { add_buttons_group: (buttons) => toolbarButtons.push(...buttons) },
+    };
+    const utils = {
+        url_path_join: (...parts) => parts.join("/").replace(/\/+/g, "/"),
+        fixOverwrittenChars: (text) => text,
+    };
+    defineExtension(window, CELL_DASHBOARD_JS)(jupyter, utils).load_jupyter_extension();
+
+    return {
+        channel: channel,
+        opened: opened,
+        toolbarButtons: toolbarButtons,
+        select(index) {
+            selected = index;
+        },
+        run: (name) => actions.get(`cell_dashboard:${name}`).handler(),
+        finishRunning(index) {
+            notebook.events.trigger("finished_execute.CodeCell", { cell: made[index] });
+        },
+        close: () => closePage(window),
+    };
+}
+
+/**
+ * Load the cell_dashboard window's page, listening on the channel named in its address.
+ *
+ * @param {object} options
+ * @param {string} options.channelName - the channel the notebook gave the window.
+ */
+function loadDashboardPage({ channelName }) {
+    const { virtualConsole, closePage } = strictConsole();
+    const query = `channel=${encodeURIComponent(channelName)}`;
+    const dom = new JSDOM(DASHBOARD_HTML, {
+        url: `http://localhost:8888/nbextensions/cell_dashboard/dashboard.html?${query}`,
+        runScripts: "outside-only",
+        virtualConsole: virtualConsole,
+    });
+    const window = dom.window;
+    const channel = fakeBroadcastChannel(window);
+    window.eval(DASHBOARD_JS);
+
+    return {
+        channel: channel,
+        title: () => window.document.getElementById("pane_title").textContent,
+        outputs: () => window.document.getElementById("pane_outputs"),
+        close: () => closePage(window),
+    };
+}
+
 module.exports = {
     cell,
+    loadCellDashboard,
     loadCellFolds,
     loadCellIds,
+    loadDashboardPage,
     loadGistIt,
     loadMinimap,
     loadRise,
