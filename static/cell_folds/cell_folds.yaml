@@ -1,0 +1,5 @@
+Type: Jupyter Notebook Extension
+Compatibility: 5.x, 6.x
+Name: Cell folds
+Main: main.js
+Description: Adds actions that fold a code cell's input, its output, or both, on the selected cells or on every cell.

@@ -1,7 +1,7 @@
-// Loads static/rise/main.js, static/gist_it/main.js, or static/cell_ids/main.js in a jsdom page
-// with nbclassic's own jQuery and a fake Jupyter whose notebook, config, actions, and dialogs hold
-// state. Tests drive each extension only through what it registers and assert on the resulting DOM
-// and Jupyter state.
+// Loads static/rise/main.js, static/gist_it/main.js, static/cell_ids/main.js, or
+// static/cell_folds/main.js in a jsdom page with nbclassic's own jQuery and a fake Jupyter whose
+// notebook, config, actions, and dialogs hold state. Tests drive each extension only through what
+// it registers and assert on the resulting DOM and Jupyter state.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -11,6 +11,8 @@ const REPO_ROOT = path.join(__dirname, "..", "..");
 const MAIN_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "rise", "main.js"), "utf8");
 const GIST_IT_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "gist_it", "main.js"), "utf8");
 const CELL_IDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_ids", "main.js"), "utf8");
+const CELL_FOLDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_folds", "main.js"),
+                                      "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -646,6 +648,9 @@ function fakeCodeCellClass($, notebook) {
         constructor(outputHtml) {
             this.cell_type = "code";
             this.input_prompt_number = null;
+            this.outputCollapsed = false;
+            this.refreshes = 0;
+            this.focused = false;
             this.element = $(`<div class="cell code_cell">
                 <div class="input"><div class="prompt_container">
                     <div class="prompt input_prompt"></div>
@@ -660,6 +665,22 @@ function fakeCodeCellClass($, notebook) {
             this.input_prompt_number = number;
             this.element.find("div.input_prompt").html(CodeCell.input_prompt_function(number, 1));
             notebook.set_dirty(true);
+        }
+
+        collapse_output() {
+            this.outputCollapsed = true;
+        }
+
+        expand_output() {
+            this.outputCollapsed = false;
+        }
+
+        refresh() {
+            this.refreshes += 1;
+        }
+
+        focus_editor() {
+            this.focused = true;
         }
 
         static input_prompt_function(value) {
@@ -766,4 +787,47 @@ function loadCellIds({ cells }) {
     };
 }
 
-module.exports = { cell, loadCellIds, loadGistIt, loadRise, loadRevealPlugin };
+/**
+ * Load cell_folds into a fresh page holding `cells`, as loadCellIds does.
+ *
+ * @param {object} options
+ * @param {Array} options.cells - as in loadCellIds, with `selected` marking selected cells.
+ */
+function loadCellFolds({ cells }) {
+    const { window, $, notebook, CodeCell, closePage } = notebookPage(cells);
+    notebook.get_cells().forEach((made, index) => {
+        made.selected = Boolean(cells[index].selected);
+    });
+    notebook.get_selected_cells = () => notebook.get_cells().filter((made) => made.selected);
+    notebook.command_mode = () => {};
+
+    const actions = new Map();
+    const keyboard_manager = {
+        actions: {
+            register(action, name, prefix) {
+                actions.set(`${prefix}:${name}`, action);
+            },
+        },
+    };
+
+    const factory = defineExtension(window, CELL_FOLDS_JS);
+    const fakeRequire = { toUrl: (url) => url };
+    const jupyter = { notebook: notebook, keyboard_manager: keyboard_manager };
+    const extension = factory(fakeRequire, $, jupyter, { CodeCell: CodeCell });
+    extension.load_jupyter_extension();
+
+    return {
+        $: $,
+        notebook: notebook,
+        actions: actions,
+        run: (name) => actions.get(`cell_folds:${name}`).handler(),
+        // as arrays of this realm
+        inputFolded: () => Array.from(notebook.get_cells(),
+                                      (made) => made.element.hasClass("input_folded")),
+        outputCollapsed: () => Array.from(notebook.get_cells(),
+                                          (made) => Boolean(made.outputCollapsed)),
+        close: () => closePage(window),
+    };
+}
+
+module.exports = { cell, loadCellFolds, loadCellIds, loadGistIt, loadRise, loadRevealPlugin };

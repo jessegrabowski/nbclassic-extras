@@ -1,0 +1,4 @@
+/* the prompt stays, so a folded input keeps its place in the notebook */
+div.cell.input_folded div.input div.inner_cell {
+    display: none;
+}
