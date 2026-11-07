@@ -1,7 +1,7 @@
 from nbformat.v4 import new_output
 from playwright.sync_api import expect
 import pytest
-from slideshow import code, markdown
+from slideshow import code, has_class, markdown
 
 
 def run_action(page, name):
@@ -342,6 +342,37 @@ def test_double_clicking_an_output_prompt_does_not_fold_it(nbclassic_server, pag
     page.locator(".out_prompt_overlay").dblclick(force=True)
 
     assert not collapsed_output(page, 0)
+
+
+def test_inserting_a_cell_leaves_the_reading_view(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code_with_output("first")])
+    run_action(page, "fold-input-of-all")
+    expect(page.locator("body")).to_have_class(has_class("outputs_only"))
+
+    page.evaluate("() => Jupyter.notebook.insert_cell_below('code')")
+
+    expect(page.locator("body")).not_to_have_class(has_class("outputs_only"))
+
+
+@pytest.mark.parametrize(
+    "structural_change",
+    [
+        "Jupyter.notebook.delete_cell(1)",
+        "Jupyter.notebook.select(1); Jupyter.notebook.cells_to_markdown()",
+    ],
+    ids=["deleting_it", "making_it_markdown"],
+)
+def test_removing_the_last_unfolded_code_cell_enters_the_reading_view(
+    nbclassic_server, page, structural_change
+):
+    nbclassic_server.open_notebook(page, [code_with_output("first"), code("second")])
+    page.evaluate("() => Jupyter.notebook.select(0)")
+    run_action(page, "fold-input-of-selected")
+    expect(page.locator("body")).not_to_have_class(has_class("outputs_only"))
+
+    page.evaluate(f"() => {{ {structural_change} }}")
+
+    expect(page.locator("body")).to_have_class(has_class("outputs_only"))
 
 
 @pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)

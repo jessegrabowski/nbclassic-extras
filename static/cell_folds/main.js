@@ -241,6 +241,12 @@ define([
         };
     }
 
+    // inserts, deletes, and cell type changes all change the notebook container's children
+    function followStructuralChanges() {
+        new MutationObserver(updateReadingView)
+            .observe(Jupyter.notebook.container[0], {childList: true});
+    }
+
     // nbclassic toggles an output on a double click of its prompt overlay, and folds take no clicks
     function ignorePromptDoubleClicks() {
         Jupyter.notebook.container[0].addEventListener('dblclick', (event) => {
@@ -254,6 +260,7 @@ define([
         loadStylesheet();
         registerActions();
         revealOnEdit();
+        followStructuralChanges();
         ignorePromptDoubleClicks();
         return Jupyter.notebook.config.loaded.then(() => {
             bindKeys();
