@@ -18,20 +18,53 @@ define([
         return `${page}?channel=${encodeURIComponent(channelName)}`;
     }
 
-    function registerActions(channelName) {
+    function paneMessage(cell) {
+        return {
+            type: 'pane',
+            title: cell.get_text().split('\n')[0],
+            outputs: cell.output_area.toJSON(),
+            trusted: cell.output_area.trusted,
+        };
+    }
+
+    function registerActions(channelName, linkCell) {
         let open = Jupyter.keyboard_manager.actions.register({
             help: 'open the cell dashboard',
             icon: 'fa-columns',
             // the shared name reuses this notebook's dashboard window on a second click
             handler: () => window.open(dashboardUrl(channelName), channelName),
         }, 'open-dashboard', 'cell_dashboard');
-        Jupyter.toolbar.add_buttons_group([open]);
+        let send = Jupyter.keyboard_manager.actions.register({
+            help: 'send the selected code cell to the dashboard',
+            icon: 'fa-share-square-o',
+            handler: () => linkCell(Jupyter.notebook.get_selected_cell()),
+        }, 'send-cell-to-dashboard', 'cell_dashboard');
+        Jupyter.toolbar.add_buttons_group([open, send]);
     }
 
     function load_jupyter_extension() {
         let channelName = `cell_dashboard:${Jupyter.notebook.notebook_path}`;
-        new BroadcastChannel(channelName);
-        registerActions(channelName);
+        let channel = new BroadcastChannel(channelName);
+        let linkedCell = null;
+
+        let sendLinkedCell = () => {
+            if (linkedCell !== null) {
+                channel.postMessage(paneMessage(linkedCell));
+            }
+        };
+        let linkCell = (cell) => {
+            if (cell.cell_type === 'code') {
+                linkedCell = cell;
+                sendLinkedCell();
+            }
+        };
+
+        channel.onmessage = ({data}) => {
+            if (data.type === 'ready') {
+                sendLinkedCell();
+            }
+        };
+        registerActions(channelName, linkCell);
     }
 
     return {
