@@ -241,10 +241,20 @@ define([
         };
     }
 
+    // nbclassic toggles an output on a double click of its prompt overlay, and folds take no clicks
+    function ignorePromptDoubleClicks() {
+        Jupyter.notebook.container[0].addEventListener('dblclick', (event) => {
+            if (event.target.closest('.out_prompt_overlay')) {
+                event.stopPropagation();
+            }
+        }, true);
+    }
+
     function load_jupyter_extension() {
         loadStylesheet();
         registerActions();
         revealOnEdit();
+        ignorePromptDoubleClicks();
         return Jupyter.notebook.config.loaded.then(() => {
             bindKeys();
             bindBlockKeys();

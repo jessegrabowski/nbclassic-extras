@@ -335,6 +335,15 @@ def test_clicks_and_arrow_keys_leave_a_folded_block_folded(nbclassic_server, pag
     assert folded_block_count(page) == 1
 
 
+def test_double_clicking_an_output_prompt_does_not_fold_it(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code_with_output("first")])
+    page.wait_for_function("() => Jupyter.keyboard_manager.actions.exists('cell_folds:fold-block')")
+
+    page.locator(".out_prompt_overlay").dblclick(force=True)
+
+    assert not collapsed_output(page, 0)
+
+
 @pytest.mark.parametrize(("fold", "unfold", "input_folds", "output_folds"), SEPARATE_KEYS)
 def test_separate_keys_fold_and_unfold_the_selected_cell(
     nbclassic_server, page, fold, unfold, input_folds, output_folds
