@@ -251,8 +251,8 @@ def test_editing_after_a_fold_changes_the_visible_header_only(nbclassic_server, 
 
 @pytest.mark.parametrize(
     "keys",
-    [["ArrowRight", "Backspace"], ["Delete"]],
-    ids=["backspace_after_the_fold", "delete_before_the_fold"],
+    [["ArrowRight", "Backspace"], ["Delete"], ["ArrowRight", "ControlOrMeta+Backspace"]],
+    ids=["backspace_after_the_fold", "delete_before_the_fold", "line_delete_after_the_fold"],
 )
 def test_deleting_beside_a_fold_unfolds_it_and_keeps_the_text(nbclassic_server, page, keys):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
@@ -265,6 +265,40 @@ def test_deleting_beside_a_fold_unfolds_it_and_keeps_the_text(nbclassic_server, 
     expect(page.locator(".CodeMirror-foldmarker")).to_have_count(0)
     text = page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()")
     assert text == FUNCTION_THEN_STATEMENT
+
+
+def test_undoing_a_paste_that_is_folded_removes_it_and_keeps_the_undo_history(
+    nbclassic_server, page
+):
+    nbclassic_server.open_notebook(page, [code("x = 1\ndef f():")])
+    edit_at_line(page, 1)
+    page.evaluate(
+        """() => {
+            const editor = Jupyter.notebook.get_cell(0).code_mirror;
+            editor.replaceRange("\\n    a\\n    b", {line: 1, ch: 8}, undefined, "paste");
+            editor.setCursor({line: 2, ch: 0});
+        }"""
+    )
+    page.keyboard.press("ControlOrMeta+Minus")
+    undo_steps = page.evaluate("() => Jupyter.notebook.get_cell(0).code_mirror.historySize().undo")
+
+    page.keyboard.press("ControlOrMeta+z")
+
+    assert page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()") == "x = 1\ndef f():"
+    assert (
+        page.evaluate("() => Jupyter.notebook.get_cell(0).code_mirror.historySize().undo")
+        == undo_steps - 1
+    )
+
+
+def test_setting_a_cell_text_replaces_a_folded_block(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 1)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    page.evaluate("() => Jupyter.notebook.get_cell(0).set_text('')")
+
+    assert page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()") == ""
 
 
 def test_deleting_a_selection_around_a_fold_deletes_it(nbclassic_server, page):
@@ -333,6 +367,51 @@ def test_clicks_and_arrow_keys_leave_a_folded_block_folded(nbclassic_server, pag
     page.keyboard.press("ArrowDown")
 
     assert folded_block_count(page) == 1
+
+
+@pytest.mark.parametrize(
+    ("edge", "command"),
+    [("from", "deleteLine"), ("to", "deleteLine"), ("from", "killLine")],
+)
+def test_line_deletes_at_a_fold_edge_unfold_it_and_keep_the_text(
+    nbclassic_server, page, edge, command
+):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 1)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    page.evaluate(
+        """([edge, command]) => {
+            const editor = Jupyter.notebook.get_cell(0).code_mirror;
+            const fold = editor.getAllMarks().find((mark) => mark.__isFold).find();
+            editor.setCursor(fold[edge]);
+            editor.execCommand(command);
+        }""",
+        [edge, command],
+    )
+
+    expect(page.locator(".CodeMirror-foldmarker")).to_have_count(0)
+    text = page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()")
+    assert text == FUNCTION_THEN_STATEMENT
+
+
+def test_cutting_with_no_selection_beside_a_fold_unfolds_it_and_keeps_the_text(
+    nbclassic_server, page
+):
+    nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
+    edit_at_line(page, 1)
+    page.keyboard.press("ControlOrMeta+Minus")
+
+    page.evaluate(
+        """() => {
+            const input = Jupyter.notebook.get_cell(0).code_mirror.getInputField();
+            input.dispatchEvent(new ClipboardEvent("cut", {bubbles: true, cancelable: true}));
+        }"""
+    )
+
+    expect(page.locator(".CodeMirror-foldmarker")).to_have_count(0)
+    text = page.evaluate("() => Jupyter.notebook.get_cell(0).get_text()")
+    assert text == FUNCTION_THEN_STATEMENT
 
 
 def test_double_clicking_an_output_prompt_does_not_fold_it(nbclassic_server, page):

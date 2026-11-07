@@ -136,23 +136,48 @@ define([
             .filter((mark) => mark.__isFold);
     }
 
-    function isExactly(mark, range) {
+    function overlaps(mark, range) {
         let {from, to} = mark.find();
-        return CodeMirror.cmpPos(from, range.from) === 0 && CodeMirror.cmpPos(to, range.to) === 0;
+        return CodeMirror.cmpPos(range.from, to) < 0 && CodeMirror.cmpPos(from, range.to) < 0;
     }
 
-    // a fold is atomic, so Backspace or Delete beside it would delete all of its hidden text
+    // nbclassic's Backspace command deletes with no change origin, and canceling an undo would
+    // empty the undo history, so only keystrokes qualify
+    function isDeleteKeystroke(change) {
+        let fromKey = !change.origin || change.origin === '+delete';
+        return fromKey && change.text.join('') === '';
+    }
+
+    // a fold is atomic, so a delete key beside it would delete or rejoin text no one can see
     function unfoldInsteadOfDeleting(editor, change) {
-        // nbclassic's Backspace command deletes with no change origin, so test the text itself
-        if (change.text.join('') !== '') {
+        if (!isDeleteKeystroke(change) || editor.somethingSelected()) {
             return;
         }
-        let fold = editor.findMarks(change.from, change.to)
-            .find((mark) => mark.__isFold && isExactly(mark, change));
-        if (fold) {
+        let folds = editor.findMarks(change.from, change.to)
+            .filter((mark) => mark.__isFold && overlaps(mark, change));
+        if (folds.length > 0) {
             change.cancel();
             // beforeChange handlers must not alter what the editor displays
-            setTimeout(() => fold.clear());
+            setTimeout(() => folds.forEach((mark) => mark.clear()));
+        }
+    }
+
+    // with nothing selected, a cut takes the whole line, and the fold widens that to its block
+    function unfoldInsteadOfCuttingLine(editor, event) {
+        let folds = foldsOnCursorLine(editor);
+        if (!editor.somethingSelected() && folds.length > 0) {
+            event.preventDefault();
+            folds.forEach((mark) => mark.clear());
+        }
+    }
+
+    const guardedEditors = new WeakSet();
+
+    function guardFolds(editor) {
+        if (!guardedEditors.has(editor)) {
+            guardedEditors.add(editor);
+            editor.on('beforeChange', unfoldInsteadOfDeleting);
+            editor.on('cut', unfoldInsteadOfCuttingLine);
         }
     }
 
@@ -162,11 +187,10 @@ define([
             return;
         }
         editor.foldCode(editor.getCursor(), BLOCK_FOLD_OPTIONS, 'fold');
-        editor.off('beforeChange', unfoldInsteadOfDeleting);
-        editor.on('beforeChange', unfoldInsteadOfDeleting);
-        // CodeMirror leaves the cursor after the hidden text, on a line that cannot be seen
         let [fold] = foldsOnCursorLine(editor);
         if (fold) {
+            guardFolds(editor);
+            // CodeMirror leaves the cursor after the hidden text, on a line that cannot be seen
             editor.setCursor(fold.find().from);
         }
     }
