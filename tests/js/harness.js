@@ -792,14 +792,12 @@ function loadCellIds({ cells }) {
  *
  * @param {object} options
  * @param {Array} options.cells - as in loadCellIds, with `selected` marking selected cells.
- * @param {object} [options.config] - the notebook nbconfig section.
  */
-function loadCellFolds({ cells, config = {} }) {
+function loadCellFolds({ cells }) {
     const { window, $, notebook, CodeCell, closePage } = notebookPage(cells);
     notebook.get_cells().forEach((made, index) => {
         made.selected = Boolean(cells[index].selected);
     });
-    notebook.config = configSection(config);
     notebook.get_selected_cells = () => notebook.get_cells().filter((made) => made.selected);
     notebook.get_selected_cell = () => notebook.get_cells()[0];
     notebook.scroll_manager = { element: $("<div>") };
@@ -830,7 +828,7 @@ function loadCellFolds({ cells, config = {} }) {
     const fakeRequire = { toUrl: (url) => url };
     const jupyter = { notebook: notebook, keyboard_manager: keyboard_manager };
     const extension = factory(fakeRequire, $, jupyter, { CodeCell: CodeCell });
-    const loaded = extension.load_jupyter_extension();
+    extension.load_jupyter_extension();
 
     return {
         $: $,
@@ -838,7 +836,6 @@ function loadCellFolds({ cells, config = {} }) {
         actions: actions,
         shortcuts: shortcuts,
         editShortcuts: editShortcuts,
-        loaded: loaded,
         run: (name) => actions.get(`cell_folds:${name}`).handler(),
         // as arrays of this realm
         inputFolded: () => Array.from(notebook.get_cells(),
