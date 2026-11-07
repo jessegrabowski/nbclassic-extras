@@ -826,6 +826,7 @@ function loadCellFolds({ cells }) {
                                       (made) => made.element.hasClass("input_folded")),
         outputCollapsed: () => Array.from(notebook.get_cells(),
                                           (made) => Boolean(made.outputCollapsed)),
+        readingView: () => $("body").hasClass("outputs_only"),
         close: () => closePage(window),
     };
 }

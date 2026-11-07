@@ -78,6 +78,36 @@ test("a joint fold folds input and output together", (t) => {
     assert.deepEqual(folds.outputCollapsed(), [false, false]);
 });
 
+test("folding every code cell's input enters the reading view, ignoring text cells", (t) => {
+    const folds = loadCellFolds({ cells: [MARKDOWN, CODE, CODE] });
+    t.after(folds.close);
+
+    folds.run("fold-input-of-all");
+    assert.deepEqual(folds.inputFolded(), [false, true, true]);
+    assert.equal(folds.readingView(), true);
+
+    folds.run("unfold-input-of-all");
+    assert.equal(folds.readingView(), false);
+});
+
+test("folding some inputs stays out of the reading view", (t) => {
+    const folds = loadCellFolds({ cells: [SELECTED, CODE] });
+    t.after(folds.close);
+
+    folds.run("fold-input-of-selected");
+
+    assert.equal(folds.readingView(), false);
+});
+
+test("a notebook with no code cells never enters the reading view", (t) => {
+    const folds = loadCellFolds({ cells: [MARKDOWN] });
+    t.after(folds.close);
+
+    folds.run("fold-input-of-selected");
+
+    assert.equal(folds.readingView(), false);
+});
+
 test("an output fold with no code cell in scope leaves the notebook clean", (t) => {
     const folds = loadCellFolds({ cells: [MARKDOWN, CODE] });
     t.after(folds.close);
@@ -88,7 +118,7 @@ test("an output fold with no code cell in scope leaves the notebook clean", (t) 
     assert.equal(folds.notebook.dirty, false);
 });
 
-test("focusing a folded cell's editor reveals it", (t) => {
+test("focusing a folded cell's editor reveals it and leaves the reading view", (t) => {
     const folds = loadCellFolds({ cells: [CODE, CODE] });
     t.after(folds.close);
     const [first] = folds.notebook.get_cells();
@@ -97,5 +127,6 @@ test("focusing a folded cell's editor reveals it", (t) => {
     first.focus_editor();
 
     assert.deepEqual(folds.inputFolded(), [false, true]);
+    assert.equal(folds.readingView(), false);
     assert.equal(first.focused, true);
 });

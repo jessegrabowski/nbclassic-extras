@@ -73,6 +73,40 @@ def test_a_joint_fold_hides_input_and_output(nbclassic_server, page):
     expect(first.locator(".output_area")).to_be_visible()
 
 
+def test_the_reading_view_hides_cells_whose_output_is_folded(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [markdown("Alpha", ""), code_with_output("first")])
+
+    run_action(page, "fold-joint-of-all")
+
+    expect(page.locator(".text_cell")).to_contain_text("Alpha")
+    expect(page.locator(".code_cell")).to_be_hidden()
+
+    run_action(page, "unfold-joint-of-all")
+
+    expect(page.locator(".code_cell")).to_be_visible()
+
+
+def test_the_reading_view_shows_markdown_and_outputs_only(nbclassic_server, page):
+    nbclassic_server.open_notebook(
+        page, [markdown("Alpha", ""), code_with_output("first"), code("no output")]
+    )
+
+    run_action(page, "fold-input-of-all")
+
+    expect(page.locator(".text_cell")).to_contain_text("Alpha")
+    expect(page.locator(".text_cell .prompt")).to_be_hidden()
+    expect(page.locator(".code_cell").nth(0).locator(".input")).to_be_hidden()
+    expect(page.locator(".code_cell").nth(0).locator(".output_area")).to_contain_text(
+        "first output"
+    )
+    expect(page.locator(".code_cell").nth(0).locator(".output_area .prompt")).to_be_hidden()
+    expect(page.locator(".code_cell").nth(1)).to_be_hidden()
+
+    run_action(page, "unfold-input-of-all")
+
+    expect(page.locator(".code_cell").nth(1)).to_be_visible()
+
+
 def test_running_a_folded_cell_keeps_it_folded_and_shows_its_output(nbclassic_server, page):
     nbclassic_server.open_notebook(
         page, [code("print('fresh')"), code("second")], wait_for_kernel=True
