@@ -670,16 +670,7 @@ function fakeCodeCellClass($, notebook) {
     };
 }
 
-/**
- * Load cell_ids into a fresh page holding `cells`, each rendered as nbclassic renders it on load.
- * Like nbclassic, the notebook reads its cells back from the DOM, so the insertCell, moveCell, and
- * deleteCell helpers change the notebook only by changing the DOM.
- *
- * @param {object} options
- * @param {Array} options.cells - {cellType, executionCount, outputHtml} for each cell, where
- *     outputHtml is markup a code cell's output shows.
- */
-function loadCellIds({ cells }) {
+function notebookPage(cells) {
     const { virtualConsole, closePage } = strictConsole();
     const dom = new JSDOM(PAGE, {
         url: "http://localhost:8888/notebooks/cells.ipynb",
@@ -716,12 +707,31 @@ function loadCellIds({ cells }) {
     };
     cells.map(makeCell).forEach((made) => made.element.appendTo(notebook.container));
     notebook.dirty = false;
+    return { window, $, notebook, CodeCell, makeCell, closePage };
+}
 
+function defineExtension(window, source) {
     let factory = null;
     window.define = (deps, body) => {
         factory = body;
     };
-    window.eval(CELL_IDS_JS);
+    window.eval(source);
+    return factory;
+}
+
+/**
+ * Load cell_ids into a fresh page holding `cells`, each rendered as nbclassic renders it on load.
+ * Like nbclassic, the notebook reads its cells back from the DOM, so the insertCell, moveCell, and
+ * deleteCell helpers change the notebook only by changing the DOM.
+ *
+ * @param {object} options
+ * @param {Array} options.cells - {cellType, executionCount, outputHtml} for each cell, where
+ *     outputHtml is markup a code cell's output shows.
+ */
+function loadCellIds({ cells }) {
+    const { window, $, notebook, CodeCell, makeCell, closePage } = notebookPage(cells);
+
+    const factory = defineExtension(window, CELL_IDS_JS);
     const fakeRequire = { toUrl: (url) => url };
     const extension = factory(fakeRequire, $, { notebook: notebook }, { CodeCell: CodeCell });
     extension.load_jupyter_extension();
