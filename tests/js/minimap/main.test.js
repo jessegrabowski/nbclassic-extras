@@ -92,6 +92,15 @@ test("a wheel that counts in lines scrolls by whole lines", (t) => {
     assert.equal(minimap.scroller.scrollTop, 3 * 16);
 });
 
+test("a wheel that counts in pages scrolls by whole pages", (t) => {
+    const minimap = loadMinimap({ scrollHeight: 8000, clientHeight: 800 });
+    t.after(minimap.close);
+
+    minimap.wheel(2, minimap.window.WheelEvent.DOM_DELTA_PAGE);
+
+    assert.equal(minimap.scroller.scrollTop, 2 * 800);
+});
+
 test("only the main button clicks or drags the strip", (t) => {
     const minimap = loadMinimap({ scrollHeight: 8000, clientHeight: 800 });
     t.after(minimap.close);

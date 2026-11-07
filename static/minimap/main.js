@@ -427,11 +427,17 @@ define([
         });
     }
 
+    function pixelsPerWheelUnit(deltaMode) {
+        if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
+            return WHEEL_LINE_PIXELS;
+        }
+        return deltaMode === WheelEvent.DOM_DELTA_PAGE ? scroller().clientHeight : 1;
+    }
+
     // the strip sits outside the scroller, so a wheel over it would otherwise scroll nothing
     function forwardWheel(canvas) {
         canvas.addEventListener('wheel', ({deltaY, deltaMode}) => {
-            let pixelsPerUnit = deltaMode === WheelEvent.DOM_DELTA_LINE ? WHEEL_LINE_PIXELS : 1;
-            scroller().scrollTop += deltaY * pixelsPerUnit;
+            scroller().scrollTop += deltaY * pixelsPerWheelUnit(deltaMode);
         }, {passive: true});
     }
 
