@@ -35,9 +35,9 @@ SEPARATE_KEYS = [
     pytest.param("Semicolon", "Quote", True, True, id="joint"),
 ]
 CHORD_KEYS = [
-    pytest.param("ControlOrMeta+Minus", "ControlOrMeta+Equal", True, False, id="input"),
-    pytest.param("Alt+Minus", "Alt+Equal", False, True, id="output"),
-    pytest.param("ControlOrMeta+Alt+Minus", "ControlOrMeta+Alt+Equal", True, True, id="joint"),
+    pytest.param("Alt+Minus", "Alt+Equal", True, False, id="input"),
+    pytest.param("Alt+BracketLeft", "Alt+BracketRight", False, True, id="output"),
+    pytest.param("Alt+Semicolon", "Alt+Quote", True, True, id="joint"),
 ]
 
 
@@ -57,8 +57,7 @@ FUNCTION_THEN_STATEMENT = "def f():\n    a = 1\n    b = 2\n\nc = 3"
 def edit_at_line(page, line):
     # nbextensions load after the notebook reports itself loaded
     page.wait_for_function(
-        "() => ['meta-minus', 'ctrl-minus'].some((shortcut) =>"
-        " Jupyter.keyboard_manager.edit_shortcuts.get_shortcut(shortcut) !== undefined)"
+        "() => Jupyter.keyboard_manager.edit_shortcuts.get_shortcut('alt-minus') !== undefined"
     )
     page.evaluate(
         """(line) => {
@@ -212,7 +211,7 @@ def test_edit_mode_keys_fold_and_unfold_the_block_around_the_cursor(nbclassic_se
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)], wait_for_kernel=True)
     edit_at_line(page, 1)
 
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     assert folded_block_count(page) == 1
     expect(page.locator(".CodeMirror-foldmarker")).to_have_text("...")
@@ -221,7 +220,7 @@ def test_edit_mode_keys_fold_and_unfold_the_block_around_the_cursor(nbclassic_se
     assert text == FUNCTION_THEN_STATEMENT
     assert page.evaluate("() => Jupyter.notebook.mode") == "edit"
 
-    page.keyboard.press("ControlOrMeta+Equal")
+    page.keyboard.press("Alt+Equal")
 
     assert folded_block_count(page) == 0
     expect(page.locator(".CodeMirror-code")).to_contain_text("b = 2")
@@ -231,8 +230,8 @@ def test_a_second_fold_of_the_same_block_changes_nothing(nbclassic_server, page)
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 1)
 
-    page.keyboard.press("ControlOrMeta+Minus")
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
+    page.keyboard.press("Alt+Minus")
 
     assert folded_block_count(page) == 1
 
@@ -240,7 +239,7 @@ def test_a_second_fold_of_the_same_block_changes_nothing(nbclassic_server, page)
 def test_editing_after_a_fold_changes_the_visible_header_only(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 1)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     page.keyboard.press("Backspace")
     page.keyboard.type(": # note")
@@ -258,7 +257,7 @@ def test_editing_after_a_fold_changes_the_visible_header_only(nbclassic_server, 
 def test_deleting_beside_a_fold_unfolds_it_and_keeps_the_text(nbclassic_server, page, keys):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 1)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     for key in keys:
         page.keyboard.press(key)
@@ -280,7 +279,7 @@ def test_undoing_a_paste_that_is_folded_removes_it_and_keeps_the_undo_history(
             editor.setCursor({line: 2, ch: 0});
         }"""
     )
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
     undo_steps = page.evaluate("() => Jupyter.notebook.get_cell(0).code_mirror.historySize().undo")
 
     page.keyboard.press("ControlOrMeta+z")
@@ -295,7 +294,7 @@ def test_undoing_a_paste_that_is_folded_removes_it_and_keeps_the_undo_history(
 def test_setting_a_cell_text_replaces_a_folded_block(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 1)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     page.evaluate("() => Jupyter.notebook.get_cell(0).set_text('')")
 
@@ -305,7 +304,7 @@ def test_setting_a_cell_text_replaces_a_folded_block(nbclassic_server, page):
 def test_deleting_a_selection_around_a_fold_deletes_it(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 1)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     page.keyboard.press("ControlOrMeta+a")
     page.keyboard.press("Backspace")
@@ -329,7 +328,7 @@ def test_the_fold_takes_the_innermost_block_around_the_cursor(
     nbclassic_server.open_notebook(page, [code(source)])
     edit_at_line(page, cursor_line)
 
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     assert folded_block_lines(page) == [folded_lines]
 
@@ -338,11 +337,11 @@ def test_unfolding_one_block_leaves_the_others_folded(nbclassic_server, page):
     source = "def f():\n    a\n    b\n\ndef g():\n    c\n    d"
     nbclassic_server.open_notebook(page, [code(source)])
     edit_at_line(page, 1)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
     edit_at_line(page, 5)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
-    page.keyboard.press("ControlOrMeta+Equal")
+    page.keyboard.press("Alt+Equal")
 
     assert folded_block_lines(page) == [[0, 2]]
 
@@ -351,7 +350,7 @@ def test_a_line_outside_any_block_folds_nothing(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 4)
 
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     assert folded_block_count(page) == 0
 
@@ -359,7 +358,7 @@ def test_a_line_outside_any_block_folds_nothing(nbclassic_server, page):
 def test_clicks_and_arrow_keys_leave_a_folded_block_folded(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 0)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     marker = page.locator(".CodeMirror-foldmarker").bounding_box()
     page.mouse.click(marker["x"] + marker["width"] / 2, marker["y"] + marker["height"] / 2)
@@ -379,7 +378,7 @@ def test_line_deletes_at_a_fold_edge_unfold_it_and_keep_the_text(
 ):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 1)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     page.evaluate(
         """([edge, command]) => {
@@ -401,7 +400,7 @@ def test_cutting_with_no_selection_beside_a_fold_unfolds_it_and_keeps_the_text(
 ):
     nbclassic_server.open_notebook(page, [code(FUNCTION_THEN_STATEMENT)])
     edit_at_line(page, 1)
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     page.evaluate(
         """() => {
@@ -419,7 +418,7 @@ def test_block_folds_also_work_in_markdown_cells(nbclassic_server, page):
     nbclassic_server.open_notebook(page, [markdown("- a\n    - b\n    - c", "")])
     edit_at_line(page, 1)
 
-    page.keyboard.press("ControlOrMeta+Minus")
+    page.keyboard.press("Alt+Minus")
 
     assert folded_block_lines(page) == [[0, 2]]
 
@@ -589,7 +588,7 @@ def test_shift_with_a_chord_folds_every_cell(nbclassic_server, page):
     try:
         nbclassic_server.open_notebook(page, [code("first"), code("second")])
 
-        press_on_second_of_two_cells(page, "ControlOrMeta+Shift+Minus")
+        press_on_second_of_two_cells(page, "Alt+Shift+Minus")
 
         assert folded_input(page, 0)
         assert folded_input(page, 1)

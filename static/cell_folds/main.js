@@ -1,8 +1,8 @@
 /*
  * cell_folds: hide a code cell's input, its output, or both, on the selected cells or on every
  * cell. Each fold is a named action, and the cell_folds_key_system nbconfig setting picks which
- * command-mode keys reach them. Holding shift acts on every cell. In edit mode, Cmd-minus and
- * Cmd-equals fold and unfold the code block at the cursor, whatever the setting.
+ * command-mode keys reach them. Holding shift acts on every cell. In edit mode, Alt-minus and
+ * Alt-equals fold and unfold the code block at the cursor, whatever the setting.
  *
  * An input fold is a class on the cell, so it leaves the notebook clean and lasts for the session.
  * An output fold is nbclassic's own collapse, which is saved with the notebook. When every code
@@ -102,9 +102,9 @@ define([
             joint: {fold: ';', unfold: "'"},
         },
         chords: {
-            input: {fold: 'cmdtrl--', unfold: 'cmdtrl-='},
-            output: {fold: 'alt--', unfold: 'alt-='},
-            joint: {fold: 'cmdtrl-alt--', unfold: 'cmdtrl-alt-='},
+            input: {fold: 'alt--', unfold: 'alt-='},
+            output: {fold: 'alt-[', unfold: 'alt-]'},
+            joint: {fold: 'alt-;', unfold: "alt-'"},
         },
     };
 
@@ -200,8 +200,8 @@ define([
     }
 
     const BLOCK_DIRECTIONS = {
-        fold: {key: 'cmdtrl--', handler: foldBlockAtCursor},
-        unfold: {key: 'cmdtrl-=', handler: unfoldBlockAtCursor},
+        fold: {key: 'alt--', handler: foldBlockAtCursor},
+        unfold: {key: 'alt-=', handler: unfoldBlockAtCursor},
     };
 
     function actionName(direction, targetName, scopeName) {

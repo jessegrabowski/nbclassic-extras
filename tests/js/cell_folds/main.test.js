@@ -162,9 +162,9 @@ test("the chord key system replaces the separate keys", async (t) => {
 
     assert.equal(new Set(folds.shortcuts.values()).size, 12);
     assert.ok([...folds.shortcuts.values()].every((action) => folds.actions.has(action)));
-    assert.equal(folds.shortcuts.get("cmdtrl--"), "cell_folds:fold-input-of-selected");
-    assert.equal(folds.shortcuts.get("shift-alt--"), "cell_folds:fold-output-of-all");
-    assert.equal(folds.shortcuts.get("cmdtrl-alt-="), "cell_folds:unfold-joint-of-selected");
+    assert.equal(folds.shortcuts.get("alt--"), "cell_folds:fold-input-of-selected");
+    assert.equal(folds.shortcuts.get("shift-alt-["), "cell_folds:fold-output-of-all");
+    assert.equal(folds.shortcuts.get("alt-'"), "cell_folds:unfold-joint-of-selected");
     assert.equal(folds.shortcuts.has("-"), false);
 });
 
@@ -175,8 +175,8 @@ test("edit mode binds block folds under either key system", async (t) => {
         await folds.loaded;
 
         assert.equal(folds.editShortcuts.size, 2);
-        assert.equal(folds.editShortcuts.get("cmdtrl--"), "cell_folds:fold-block");
-        assert.equal(folds.editShortcuts.get("cmdtrl-="), "cell_folds:unfold-block");
+        assert.equal(folds.editShortcuts.get("alt--"), "cell_folds:fold-block");
+        assert.equal(folds.editShortcuts.get("alt-="), "cell_folds:unfold-block");
         assert.ok([...folds.editShortcuts.values()].every((action) => folds.actions.has(action)));
     }
 });
