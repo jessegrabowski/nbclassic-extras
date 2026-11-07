@@ -1,7 +1,7 @@
-// Loads static/rise/main.js, static/gist_it/main.js, static/cell_ids/main.js, or
-// static/cell_folds/main.js in a jsdom page with nbclassic's own jQuery and a fake Jupyter whose
-// notebook, config, actions, and dialogs hold state. Tests drive each extension only through what
-// it registers and assert on the resulting DOM and Jupyter state.
+// Loads static/rise/main.js, static/gist_it/main.js, static/cell_ids/main.js,
+// static/cell_folds/main.js, or static/minimap/main.js in a jsdom page with nbclassic's own jQuery
+// and a fake Jupyter whose notebook, config, actions, and dialogs hold state. Tests drive each
+// extension only through what it registers and assert on the resulting DOM and Jupyter state.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -13,6 +13,7 @@ const GIST_IT_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "gist_it", "ma
 const CELL_IDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_ids", "main.js"), "utf8");
 const CELL_FOLDS_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "cell_folds", "main.js"),
                                       "utf8");
+const MINIMAP_JS = fs.readFileSync(path.join(REPO_ROOT, "static", "minimap", "main.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -846,4 +847,97 @@ function loadCellFolds({ cells }) {
     };
 }
 
-module.exports = { cell, loadCellFolds, loadCellIds, loadGistIt, loadRise, loadRevealPlugin };
+/**
+ * Load minimap into a fresh empty page whose notebook scroller reports the given sizes. jsdom has
+ * no layout, so tests here cover the strip's scroll arithmetic and the events it answers, and leave
+ * drawing to the browser.
+ *
+ * @param {object} options
+ * @param {number} options.scrollHeight - height of the notebook's content.
+ * @param {number} options.clientHeight - height of the scroller and of the strip.
+ * @param {boolean} [options.hidden] - whether local storage already holds a hidden strip.
+ * @param {boolean} [options.storageBlocked] - whether reading local storage throws.
+ */
+function loadMinimap({ scrollHeight, clientHeight, hidden = false, storageBlocked = false }) {
+    const { window, $, notebook, closePage } = notebookPage([]);
+    const scroller = $("#notebook").wrap('<div id="site"></div>').parent()[0];
+    Object.defineProperties(scroller, {
+        scrollHeight: { value: scrollHeight },
+        clientHeight: { value: clientHeight },
+    });
+    notebook.scroll_manager = { element: $(scroller) };
+    notebook._fully_loaded = true;
+    notebook.events = new FakeEvents();
+    const frames = [];
+    window.requestAnimationFrame = (callback) => frames.push(callback);
+
+    const actions = new Map();
+    const toolbarButtons = [];
+    const jupyter = {
+        notebook: notebook,
+        keyboard_manager: {
+            actions: {
+                register(action, name, prefix) {
+                    actions.set(`${prefix}:${name}`, action);
+                    return `${prefix}:${name}`;
+                },
+            },
+        },
+        toolbar: { add_buttons_group: (buttons) => toolbarButtons.push(...buttons) },
+    };
+
+    window.localStorage.clear();
+    if (hidden) {
+        window.localStorage.setItem("minimap.hidden", "true");
+    }
+    if (storageBlocked) {
+        Object.defineProperty(window, "localStorage", {
+            get() {
+                throw new window.DOMException("blocked", "SecurityError");
+            },
+        });
+    }
+    const factory = defineExtension(window, MINIMAP_JS);
+    const fakeRequire = { toUrl: (url) => url };
+    factory(fakeRequire, $, jupyter).load_jupyter_extension();
+    const canvas = $("#minimap")[0];
+
+    return {
+        $: $,
+        window: window,
+        scroller: scroller,
+        notebook: notebook,
+        toolbarButtons: toolbarButtons,
+        // runs what is waiting for the next frame and counts it, so a test sees what asked to draw
+        runFrames() {
+            const waiting = frames.splice(0);
+            waiting.forEach((callback) => callback());
+            return waiting.length;
+        },
+        toggle: () => actions.get("minimap:toggle-minimap").handler(),
+        hidden: () => $("body").hasClass("minimap_hidden"),
+        mouse: (type, clientY, button = 0) => {
+            $(canvas).trigger($.Event(type, { clientY: clientY, button: button }));
+        },
+        mouseOnDocument: (type, clientY, buttons = 1) => {
+            $(window.document).trigger($.Event(type, { clientY: clientY, buttons: buttons }));
+        },
+        wheel: (deltaY, deltaMode = 0) => {
+            canvas.dispatchEvent(new window.WheelEvent("wheel", {
+                deltaY: deltaY,
+                deltaMode: deltaMode,
+            }));
+        },
+        close: () => closePage(window),
+    };
+}
+
+module.exports = {
+    cell,
+    loadCellFolds,
+    loadCellIds,
+    loadGistIt,
+    loadMinimap,
+    loadRise,
+    loadRevealPlugin,
+};

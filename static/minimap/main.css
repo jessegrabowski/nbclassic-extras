@@ -1,0 +1,33 @@
+#minimap {
+    position: fixed;
+    cursor: pointer;
+}
+
+/*
+ * the strip takes a column of its own, so the notebook narrows instead of running beneath it. The
+ * padding is STRIP_WIDTH from main.js plus a small gap.
+ */
+body:not(.rise-enabled):not(.minimap_hidden) #notebook {
+    box-sizing: border-box;
+    padding-right: 116px;
+}
+
+body:not(.rise-enabled):not(.minimap_hidden) #notebook-container {
+    max-width: 100%;
+}
+
+.rise-enabled #minimap,
+.minimap_hidden #minimap {
+    display: none;
+}
+
+/* neither a printed page nor a phone-width window has room for a second column */
+@media print, (max-width: 500px) {
+    #minimap {
+        display: none;
+    }
+
+    body:not(.rise-enabled):not(.minimap_hidden) #notebook {
+        padding-right: 0;
+    }
+}
