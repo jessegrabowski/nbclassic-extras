@@ -145,6 +145,15 @@ body {
     color: #333;
 }
 
+/* a pane whose cell left the notebook keeps its last outputs, dimmed */
+.pane_disconnected .pane_title {
+    text-decoration: line-through;
+}
+
+.pane_disconnected .pane_outputs {
+    opacity: 0.5;
+}
+
 .pane_outputs {
     display: flex;
     flex: 1;

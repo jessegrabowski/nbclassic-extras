@@ -4,24 +4,40 @@
  * The toolbar button and the t key in command mode send the selected cell, and open the window
  * when none is open. Shift-t sends it to a pane stacked below another, for wide plots.
  *
- * The notebook and the window share a BroadcastChannel named from the notebook's path. The window
- * announces itself when it loads and gets every linked cell, so it can open or reload at any time.
- * The notebook keeps its links in memory, so reloading the notebook leaves the window's panes
- * unlinked.
+ * The notebook and the window share a BroadcastChannel named from the notebook's path. Each side
+ * announces itself when it loads. The window gets every linked cell, and the notebook takes back
+ * the links for the window's panes, so either side can open or reload at any time. A linked cell
+ * carries a marker in the notebook.
  *
  * A link is a cell id, looked up whenever it is used, because nbclassic builds a new cell object
  * when a delete is undone. A cut and paste gives the cell a new id, so a pasted cell has to be sent
  * again.
  */
 define([
+    'require',
     'base/js/namespace',
     'base/js/utils',
-], function (Jupyter, utils) {
+], function (require, Jupyter, utils) {
     "use strict";
 
     const DASHBOARD_PAGE = 'nbextensions/cell_dashboard/dashboard.html';
+    const LINKED_CLASS = 'cell_dashboard_linked';
     const SEND_KEY = 't';
     const STACK_KEY = 'shift-t';
+
+    function loadStylesheet() {
+        let link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = require.toUrl('./main.css');
+        document.head.append(link);
+    }
+
+    // an undone delete builds a new cell element, so markers follow the ids, not the elements
+    function markLinked(linkedIds) {
+        Jupyter.notebook.get_cells().forEach((cell) => {
+            cell.element.toggleClass(LINKED_CLASS, linkedIds.has(cell.id));
+        });
+    }
 
     function dashboardUrl(channelName) {
         let page = utils.url_path_join(Jupyter.notebook.base_url, DASHBOARD_PAGE);
@@ -117,6 +133,7 @@ define([
     }
 
     function load_jupyter_extension() {
+        loadStylesheet();
         let channelName = `cell_dashboard:${Jupyter.notebook.notebook_path}`;
         let channel = new BroadcastChannel(channelName);
         let linkedIds = new Set();
@@ -129,6 +146,13 @@ define([
                 sendCell(Jupyter.notebook.get_cell(index));
             }
         };
+        // a pane whose cell is gone stays unlinked, and its missing index marks it in the window
+        let relinkPanes = (ids) => {
+            ids.filter((id) => cellIndex(id) !== null).forEach((id) => linkedIds.add(id));
+            markLinked(linkedIds);
+            ids.forEach(sendLinked);
+            channel.postMessage({type: 'indices', indices: ids.map((id) => [id, cellIndex(id)])});
+        };
         let showDashboard = () => {
             dashboard = openDashboard(channelName);
         };
@@ -139,6 +163,7 @@ define([
                 return;
             }
             linkedIds.add(cell.id);
+            markLinked(linkedIds);
             sendCell(cell, edge);
             if (dashboard === null || dashboard.closed) {
                 showDashboard();
@@ -150,11 +175,15 @@ define([
                 linkedIds.forEach(sendLinked);
             } else if (data.type === 'unlink') {
                 linkedIds.delete(data.id);
+                markLinked(linkedIds);
+            } else if (data.type === 'panes') {
+                relinkPanes(data.ids);
             } else if (data.type === 'jump') {
                 jumpToCell(data.id);
             }
         };
         onCellListChange(() => {
+            markLinked(linkedIds);
             let indices = [...linkedIds].map((id) => [id, cellIndex(id)]);
             channel.postMessage({type: 'indices', indices});
         });
@@ -164,6 +193,7 @@ define([
             }
         });
         registerActions(showDashboard, sendSelected);
+        channel.postMessage({type: 'hello'});
     }
 
     return {

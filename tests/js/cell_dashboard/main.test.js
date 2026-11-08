@@ -221,6 +221,51 @@ test("a change to the cell list sends the indices of linked cells", async (t) =>
     assert.deepEqual(dashboard.channel.posted, [{ type: "indices", indices: [["cell-1", 0]] }]);
 });
 
+test("the notebook announces itself when it loads", (t) => {
+    const dashboard = loadCellDashboard({ cells: [] });
+    t.after(dashboard.close);
+
+    assert.deepEqual(dashboard.announced, [{ type: "hello" }]);
+});
+
+test("a dashboard's panes are linked again, and a pane whose cell is gone gets no index", (t) => {
+    const dashboard = loadCellDashboard({ cells: [{ source: "a = 1" }, { source: "b = 2" }] });
+    t.after(dashboard.close);
+
+    dashboard.channel.deliver({ type: "panes", ids: ["cell-1", "cell-9"] });
+    dashboard.finishRunning(1);
+
+    assert.deepEqual(dashboard.channel.posted.map(({ type, id }) => [type, id]), [
+        ["pane", "cell-1"],
+        ["indices", undefined],
+        ["pane", "cell-1"],
+    ]);
+    assert.deepEqual(dashboard.channel.posted[1].indices, [["cell-1", 1], ["cell-9", null]]);
+    assert.deepEqual(dashboard.linkedMarks(), [false, true]);
+});
+
+test("a linked cell carries a marker until it is unlinked", (t) => {
+    const dashboard = loadCellDashboard({ cells: [{ source: "a = 1" }, { source: "b = 2" }] });
+    t.after(dashboard.close);
+
+    dashboard.run("send-cell-to-dashboard");
+    assert.deepEqual(dashboard.linkedMarks(), [true, false]);
+
+    dashboard.channel.deliver({ type: "unlink", id: "cell-0" });
+    assert.deepEqual(dashboard.linkedMarks(), [false, false]);
+});
+
+test("a cell rebuilt by an undone delete gets its marker back", async (t) => {
+    const dashboard = loadCellDashboard({ cells: [{ source: "a = 1" }] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    dashboard.rebuildCell(0, "a = 1");
+
+    await dashboard.changeCellList();
+
+    assert.deepEqual(dashboard.linkedMarks(), [true]);
+});
+
 test("a jump selects the linked cell and scrolls to it", (t) => {
     const dashboard = loadCellDashboard({ cells: [{ source: "a = 1" }, { source: "b = 2" }] });
     t.after(dashboard.close);
