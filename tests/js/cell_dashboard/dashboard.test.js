@@ -6,12 +6,12 @@ const { loadDashboardPage } = require("../harness");
 
 const CHANNEL = "cell_dashboard:work/fit.ipynb";
 
-function pane(outputs, { trusted = true, id = "cell-a", index = 0 } = {}) {
+function pane(outputs, { trusted = true, id = "cell-a", index = 0, title = "fit()" } = {}) {
     return {
         type: "pane",
         id: id,
         index: index,
-        title: "fit()",
+        title: title,
         outputs: outputs,
         trusted: trusted,
     };
@@ -312,6 +312,75 @@ test("indices for a closed pane are ignored", (t) => {
     page.channel.deliver({ type: "indices", indices: [["cell-a", 2]] });
 
     assert.equal(page.document.querySelectorAll(".pane").length, 0);
+});
+
+test("a pane whose cell is gone is marked until the cell returns", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([], { id: "cell-a" }));
+    const shown = page.document.querySelector(".pane");
+
+    page.channel.deliver({ type: "indices", indices: [["cell-a", null]] });
+    assert.equal(shown.classList.contains("pane_disconnected"), true);
+
+    page.channel.deliver({ type: "indices", indices: [["cell-a", 4]] });
+    assert.equal(shown.classList.contains("pane_disconnected"), false);
+});
+
+test("a notebook that announces itself gets the ids of every pane", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    twoPanes(page);
+    page.channel.posted.length = 0;
+
+    page.channel.deliver({ type: "hello" });
+
+    assert.deepEqual(page.channel.posted, [{ type: "panes", ids: ["cell-a", "cell-b"] }]);
+});
+
+test("the arrangement is stored for the notebook", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+
+    twoPanes(page);
+
+    assert.deepEqual(page.storedLayout(), {
+        direction: "row",
+        ratio: 0.5,
+        first: { pane: "cell-a" },
+        second: { pane: "cell-b" },
+    });
+});
+
+const STACKED = {
+    direction: "column",
+    ratio: 0.3,
+    first: { pane: "cell-a" },
+    second: { pane: "cell-b" },
+};
+
+test("returning panes go back to the stored arrangement", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, storedLayout: STACKED });
+    t.after(page.close);
+
+    page.channel.deliver(pane([], { id: "cell-b", title: "b" }));
+    assert.equal(page.document.querySelectorAll(".split").length, 0);
+
+    page.channel.deliver(pane([], { id: "cell-a", title: "a" }));
+    const split = page.document.querySelector(".split.column");
+    assert.equal(split.firstElementChild.querySelector(".pane_title").textContent, "a");
+    assert.equal(split.firstElementChild.style.flex, "0.3 1 0px");
+});
+
+test("a pane outside the stored arrangement ends the restore", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, storedLayout: STACKED });
+    t.after(page.close);
+
+    page.channel.deliver(pane([], { id: "cell-c" }));
+    page.channel.deliver(pane([], { id: "cell-a" }));
+
+    assert.equal(page.document.querySelectorAll(".split.column").length, 0);
+    assert.equal(page.document.querySelectorAll(".split.row").length, 1);
 });
 
 test("the jump button asks the notebook for its own pane's cell", (t) => {

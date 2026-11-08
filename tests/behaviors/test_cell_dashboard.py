@@ -1,3 +1,5 @@
+import re
+
 from nbformat.v4 import new_output
 from playwright.sync_api import expect
 import pytest
@@ -562,3 +564,79 @@ def test_opening_again_brings_back_a_window_sent_to_another_site(nbclassic_serve
     dashboard.wait_for_url("**/dashboard.html*")
     assert len(page.context.pages) == 2
     assert errors == []
+
+
+def test_a_linked_cell_is_marked_until_its_pane_closes(nbclassic_server, page):
+    dashboard = open_with_panes(nbclassic_server, page, 2)
+    linked = page.locator(".cell.cell_dashboard_linked")
+    expect(linked).to_have_count(2)
+
+    close_pane(dashboard, "a0")
+
+    expect(linked).to_have_count(1)
+    expect(page.locator(".cell").nth(1)).to_have_class(re.compile("cell_dashboard_linked"))
+
+
+def test_a_reloaded_notebook_takes_back_its_links(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code("print('one')")], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    send_cell(page, 0)
+    expect(dashboard.locator(".pane")).to_have_count(1)
+
+    page.reload()
+    page.wait_for_function(
+        "() => { const notebook = window.Jupyter && Jupyter.notebook;"
+        " const kernel = notebook && notebook.kernel;"
+        " return !!notebook && notebook._fully_loaded"
+        " && !!kernel && kernel.is_connected() && !!kernel.info_reply; }",
+        timeout=45000,
+    )
+    expect(page.locator(".cell.cell_dashboard_linked")).to_have_count(1)
+    run_cell(page, 0)
+
+    expect(dashboard.locator(".pane_outputs pre")).to_have_text("one\n")
+
+
+def test_a_reloaded_dashboard_keeps_its_arrangement(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code("a0"), code("a1")])
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    page.evaluate("() => { Jupyter.notebook.select(1); Jupyter.notebook.command_mode(); }")
+    page.keyboard.press("Shift+T")
+    expect(dashboard.locator(".split.column")).to_have_count(1)
+
+    dashboard.reload()
+
+    expect(dashboard.locator(".split.column")).to_have_count(1)
+    upper = pane_box(dashboard, "a0")
+    lower = pane_box(dashboard, "a1")
+    assert upper["y"] + upper["height"] <= lower["y"]
+
+
+def test_a_reloaded_dashboard_keeps_its_divider_sizes(nbclassic_server, page):
+    dashboard = open_with_panes(nbclassic_server, page, 2)
+    divider = dashboard.locator(".divider").bounding_box()
+    middle = divider["y"] + divider["height"] / 2
+    dashboard.mouse.move(divider["x"] + 3, middle)
+    dashboard.mouse.down()
+    dashboard.mouse.move(250, middle)
+    dashboard.mouse.up()
+
+    dashboard.reload()
+
+    expect(dashboard.locator(".pane")).to_have_count(2)
+    assert pane_box(dashboard, "a0")["width"] == pytest.approx(248, abs=4)
+
+
+def test_a_deleted_cells_pane_is_marked_until_the_delete_is_undone(nbclassic_server, page):
+    dashboard = open_with_panes(nbclassic_server, page, 2)
+    gone = dashboard.locator(".pane.pane_disconnected")
+
+    page.evaluate("() => Jupyter.notebook.delete_cells([0])")
+    expect(gone).to_have_count(1)
+    expect(gone).to_contain_text("a0")
+
+    page.evaluate("() => Jupyter.notebook.undelete_cell()")
+    expect(gone).to_have_count(0)
+    expect(page.locator(".cell.cell_dashboard_linked")).to_have_count(2)

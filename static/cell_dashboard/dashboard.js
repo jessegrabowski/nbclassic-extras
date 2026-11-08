@@ -1,9 +1,13 @@
 /*
  * The cell_dashboard window: shows the copy of each cell's outputs that the notebook sends it, one
- * pane per cell, arranged by the layout tree in tree.js. HTML from a notebook that is not trusted
- * shows as text, because this page has no sanitizer. SVG is safe either way, because an image
- * source runs no scripts. HTML that carries a script shows as text too, because scripts inserted
- * into a page do not run, so the plot or widget it builds would be missing.
+ * pane per cell, arranged by the layout tree in tree.js. The arrangement is kept in the browser's
+ * local storage for each notebook, and a reopened window puts returning panes back where they
+ * were.
+ *
+ * HTML from a notebook that is not trusted shows as text, because this page has no sanitizer. SVG
+ * is safe either way, because an image source runs no scripts. HTML that carries a script shows as
+ * text too, because scripts inserted into a page do not run, so the plot or widget it builds would
+ * be missing.
  */
 (function () {
     "use strict";
@@ -12,11 +16,14 @@
     const ANSI_ESCAPE = /\x1b(?:\[[\d;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
     const SCRIPT_TAG = /<script\b/i;
     const PANE_DRAG_TYPE = 'application/x-cell-dashboard-pane';
+    const DISCONNECTED_CLASS = 'pane_disconnected';
 
     const {
         isLeaf,
         withNewPane,
+        keeping,
         without,
+        paneIds,
         moved,
         withRatio,
         withRunEvened,
@@ -27,8 +34,28 @@
     const channel = new BroadcastChannel(channelName);
     const panes = new Map();
     const root = document.getElementById('panes');
+    const layoutKey = `cell_dashboard.layout:${channelName}`;
     let layout = null;
     let draggedPane = null;
+    // the arrangement to rebuild as panes return, until a pane outside it arrives or the user
+    // rearranges
+    let savedLayout = storedLayout();
+
+    function storedLayout() {
+        try {
+            return JSON.parse(window.localStorage.getItem(layoutKey));
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function storeLayout() {
+        try {
+            window.localStorage.setItem(layoutKey, JSON.stringify(layout));
+        } catch (error) {
+            console.warn('cell_dashboard: the arrangement will not outlast this window', error);
+        }
+    }
 
     function imageFrom(source) {
         let image = document.createElement('img');
@@ -119,11 +146,12 @@
             divider.addEventListener('pointermove', follow);
             divider.addEventListener('lostpointercapture', () => {
                 divider.removeEventListener('pointermove', follow);
+                savedLayout = null;
+                storeLayout();
             }, {once: true});
         });
         divider.addEventListener('dblclick', () => {
-            layout = withRunEvened(layout, path, direction);
-            drawLayout();
+            rearrange(withRunEvened(layout, path, direction));
         });
     }
 
@@ -143,7 +171,14 @@
         return split;
     }
 
+    function rearrange(next) {
+        savedLayout = null;
+        layout = next;
+        drawLayout();
+    }
+
     function drawLayout() {
+        storeLayout();
         document.getElementById('hint').hidden = layout !== null;
         if (layout === null) {
             root.replaceChildren();
@@ -182,16 +217,15 @@
         });
         pane.addEventListener('drop', (event) => {
             event.preventDefault();
-            layout = moved(layout, draggedPane, id, edgeUnderPointer(event, pane));
+            let next = moved(layout, draggedPane, id, edgeUnderPointer(event, pane));
             endDrag();
-            drawLayout();
+            rearrange(next);
         });
     }
 
     function closePane(id) {
         panes.delete(id);
-        layout = without(layout, id);
-        drawLayout();
+        rearrange(without(layout, id));
         channel.postMessage({type: 'unlink', id});
     }
 
@@ -229,24 +263,35 @@
         return pane;
     }
 
+    function isRestoring(id, edge) {
+        return savedLayout !== null && edge === null && paneIds(savedLayout).includes(id);
+    }
+
     function addPane(id, edge) {
         panes.set(id, newPane(id));
-        let size = {width: root.clientWidth, height: root.clientHeight};
-        layout = withNewPane(layout, id, size, edge);
+        if (isRestoring(id, edge)) {
+            layout = keeping(savedLayout, (kept) => panes.has(kept));
+        } else {
+            savedLayout = null;
+            let size = {width: root.clientWidth, height: root.clientHeight};
+            layout = withNewPane(layout, id, size, edge);
+        }
         drawLayout();
     }
 
-    // a cell deleted from the notebook has no index, so its pane stops showing one
+    // a cell deleted from the notebook has no index, so its pane keeps its outputs, marked
     function showIndex(id, index) {
-        let title = panes.get(id)?.querySelector('.pane_title');
-        if (title === undefined) {
+        let pane = panes.get(id);
+        if (pane === undefined) {
             return;
         }
+        let title = pane.querySelector('.pane_title');
         if (index === null) {
             delete title.dataset.cellIndex;
         } else {
             title.dataset.cellIndex = index;
         }
+        pane.classList.toggle(DISCONNECTED_CLASS, index === null);
     }
 
     // edge only comes with a send that asks for a side, so a refresh or a reload places panes
@@ -268,6 +313,8 @@
             showPane(data);
         } else if (data.type === 'indices') {
             data.indices.forEach(([id, index]) => showIndex(id, index));
+        } else if (data.type === 'hello') {
+            channel.postMessage({type: 'panes', ids: [...panes.keys()]});
         }
     };
     channel.postMessage({type: 'ready'});

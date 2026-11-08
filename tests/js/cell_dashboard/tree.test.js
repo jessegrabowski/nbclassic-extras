@@ -6,7 +6,9 @@ const { loadPaneTree } = require("../harness");
 
 const {
     withNewPane,
+    keeping,
     without,
+    paneIds,
     moved,
     withRatio,
     withRunEvened,
@@ -126,6 +128,20 @@ test("removing a pane gives its space to its sibling", () => {
     const tree = row({ pane: "a" }, column({ pane: "b" }, { pane: "c" }), 0.7);
 
     assert.deepEqual(without(tree, "b"), row({ pane: "a" }, { pane: "c" }, 0.7));
+});
+
+test("keeping some panes closes the gaps of the rest and keeps the shares", () => {
+    const tree = row({ pane: "a" }, column({ pane: "b" }, { pane: "c" }, 0.3), 0.7);
+
+    assert.deepEqual(keeping(tree, (pane) => pane !== "b"),
+                     row({ pane: "a" }, { pane: "c" }, 0.7));
+    assert.equal(keeping(tree, () => false), null);
+});
+
+test("pane ids come in layout order", () => {
+    const tree = row({ pane: "a" }, column({ pane: "b" }, { pane: "c" }));
+
+    assert.deepEqual(paneIds(tree), ["a", "b", "c"]);
 });
 
 test("removing the last pane empties the layout", () => {

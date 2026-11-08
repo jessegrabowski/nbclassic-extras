@@ -108,16 +108,25 @@ window.cellDashboardTree = (function () {
         return splitAt(tree, largest.pane, edge ?? longerSide, pane);
     }
 
-    function without(tree, pane) {
+    // a split that loses one side gives its space to the other
+    function keeping(tree, isKept) {
         if (isLeaf(tree)) {
-            return tree.pane === pane ? null : tree;
+            return isKept(tree.pane) ? tree : null;
         }
-        let first = without(tree.first, pane);
-        let second = without(tree.second, pane);
+        let first = keeping(tree.first, isKept);
+        let second = keeping(tree.second, isKept);
         if (first === null || second === null) {
             return first ?? second;
         }
         return {...tree, first, second};
+    }
+
+    function without(tree, pane) {
+        return keeping(tree, (kept) => kept !== pane);
+    }
+
+    function paneIds(tree) {
+        return isLeaf(tree) ? [tree.pane] : [...paneIds(tree.first), ...paneIds(tree.second)];
     }
 
     function moved(tree, pane, target, edge) {
@@ -163,5 +172,16 @@ window.cellDashboardTree = (function () {
         });
     }
 
-    return {isLeaf, withNewPane, without, moved, withRatio, withRunEvened, clampRatio, edgeAt};
+    return {
+        isLeaf,
+        withNewPane,
+        keeping,
+        without,
+        paneIds,
+        moved,
+        withRatio,
+        withRunEvened,
+        clampRatio,
+        edgeAt,
+    };
 })();

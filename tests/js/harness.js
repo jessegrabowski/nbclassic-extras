@@ -984,6 +984,7 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
 
     const made = cells.map((spec, index) => ({
         id: `cell-${index}`,
+        element: $('<div class="cell"></div>'),
         cell_type: spec.cellType ?? "code",
         get_text: () => spec.source ?? "",
         output_area: { trusted: spec.trusted ?? true, toJSON: () => spec.outputs ?? [] },
@@ -1023,20 +1024,34 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
         url_path_join: (...parts) => parts.join("/").replace(/\/+/g, "/"),
         fixOverwrittenChars: (text) => text,
     };
-    defineExtension(window, CELL_DASHBOARD_JS)(jupyter, utils).load_jupyter_extension();
+    const fakeRequire = { toUrl: (url) => url };
+    const extension = defineExtension(window, CELL_DASHBOARD_JS)(fakeRequire, jupyter, utils);
+    extension.load_jupyter_extension();
+    // what the notebook posted while loading, kept apart from what the tests make it post
+    const announced = channel.posted.splice(0);
 
     return {
+        $: $,
         channel: channel,
+        announced: announced,
         opened: opened,
         scrolledTo: scrolledTo,
         selectedIndex: () => selected,
         deleteCell(index) {
             made.splice(index, 1);
         },
-        // as nbclassic does when a delete is undone: a new cell object that keeps the old id
+        // as nbclassic does when a delete is undone: a new cell and element that keep the old id
         rebuildCell(index, source) {
-            made[index] = { ...made[index], get_text: () => source };
+            made[index] = {
+                ...made[index],
+                element: $('<div class="cell"></div>'),
+                get_text: () => source,
+            };
         },
+        // whether each cell carries the linked marker, as an array of this realm
+        linkedMarks: () => Array.from(made, (cell) => {
+            return cell.element.hasClass("cell_dashboard_linked");
+        }),
         openWindow: (name) => windows.get(name),
         // MutationObserver callbacks run as microtasks
         async changeCellList() {
@@ -1070,8 +1085,9 @@ function loadPaneTree() {
  *
  * @param {object} options
  * @param {string} options.channelName - the channel the notebook gave the window.
+ * @param {object} [options.storedLayout] - a layout tree already in local storage for the channel.
  */
-function loadDashboardPage({ channelName }) {
+function loadDashboardPage({ channelName, storedLayout = null }) {
     const { virtualConsole, closePage } = strictConsole();
     const query = `channel=${encodeURIComponent(channelName)}`;
     const dom = new JSDOM(DASHBOARD_HTML, {
@@ -1081,12 +1097,17 @@ function loadDashboardPage({ channelName }) {
     });
     const window = dom.window;
     const channel = fakeBroadcastChannel(window);
+    const layoutKey = `cell_dashboard.layout:${channelName}`;
+    if (storedLayout !== null) {
+        window.localStorage.setItem(layoutKey, JSON.stringify(storedLayout));
+    }
     window.eval(PANE_TREE_JS);
     window.eval(DASHBOARD_JS);
 
     return {
         channel: channel,
         document: window.document,
+        storedLayout: () => JSON.parse(window.localStorage.getItem(layoutKey)),
         title: () => window.document.querySelector(".pane_title").textContent,
         outputs: () => window.document.querySelector(".pane_outputs"),
         close: () => closePage(window),

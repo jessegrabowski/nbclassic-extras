@@ -1,0 +1,4 @@
+/* a cell whose outputs show in the dashboard */
+.cell.cell_dashboard_linked {
+    box-shadow: inset -3px 0 0 #4285f4;
+}
