@@ -20,7 +20,7 @@ define([
     const HELPER = `__import__('sys').modules[${JSON.stringify(HELPER_MODULE)}]`;
     const INSTALL = `${HELPER}.install()`;
     const FIGURE_ID = /^[0-9a-f]{32}$/;
-    const LARGEST_SIDE = 3840;
+    const LONGEST_SIDE = 3840;
     // a cell carrying this tag is never armed, so its figures are neither kept nor drawn again
     const NO_REDRAW_TAG = 'dashboard-no-redraw';
     const SLOW_RENDER_SECONDS = 1;
@@ -70,7 +70,7 @@ define([
     }
 
     function isRenderRequest({figure, width, height}) {
-        let isSide = (side) => Number.isInteger(side) && side >= 1 && side <= LARGEST_SIDE;
+        let isSide = (side) => Number.isInteger(side) && side >= 1 && side <= LONGEST_SIDE;
         return typeof figure === 'string' && FIGURE_ID.test(figure) && isSide(width)
             && isSide(height);
     }

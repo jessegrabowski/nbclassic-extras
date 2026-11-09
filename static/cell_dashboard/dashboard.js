@@ -25,7 +25,7 @@
     const DISCONNECTED_CLASS = 'pane_disconnected';
     const METADATA_KEY = 'cell_dashboard';
     const FIGURE_ID = /^[0-9a-f]{32}$/;
-    const LARGEST_SIDE = 3840;
+    const LONGEST_SIDE = 3840;
     const RESIZE_SETTLE_MS = 250;
 
     const {
@@ -160,7 +160,7 @@
     function pixelSize(image) {
         let ratio = window.devicePixelRatio || 1;
         let longest = Math.max(image.clientWidth, image.clientHeight) * ratio;
-        let shrink = Math.min(1, LARGEST_SIDE / longest);
+        let shrink = Math.min(1, LONGEST_SIDE / longest);
         return {
             width: Math.round(image.clientWidth * ratio * shrink),
             height: Math.round(image.clientHeight * ratio * shrink),
