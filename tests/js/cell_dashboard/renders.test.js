@@ -70,6 +70,28 @@ test("a linked cell is armed just before it runs", async (t) => {
     assert.deepEqual([...dashboard.ran], ["cell-0"]);
 });
 
+test("sending and running links the cell, then runs it armed", async (t) => {
+    const dashboard = loadCellDashboard({ cells: [{ source: "plot()" }] });
+    t.after(dashboard.close);
+    await dashboard.settle();
+    dashboard.answer(0, { install: { installed: true } });
+
+    dashboard.run("stack-cell-in-dashboard-and-run");
+
+    assert.equal(dashboard.channel.posted.find(({ type }) => type === "pane").edge, "bottom");
+    assert.match(expressions(dashboard.kernelRequests.at(-1)).armed, /\.arm\("cell-0"\)$/);
+    assert.deepEqual([...dashboard.ran], ["cell-0"]);
+});
+
+test("sending and running a markdown cell runs nothing", (t) => {
+    const dashboard = loadCellDashboard({ cells: [{ cellType: "markdown", source: "# Title" }] });
+    t.after(dashboard.close);
+
+    dashboard.run("send-cell-to-dashboard-and-run");
+
+    assert.deepEqual([...dashboard.ran], []);
+});
+
 test("a linked cell tagged dashboard-no-redraw runs unarmed", async (t) => {
     const dashboard = await linkedDashboard(t, {
         cells: [{ source: "plot()", tags: ["slow", "dashboard-no-redraw"] }],

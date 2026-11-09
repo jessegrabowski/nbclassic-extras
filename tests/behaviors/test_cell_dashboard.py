@@ -765,3 +765,13 @@ def test_reset_puts_back_the_size_the_cell_drew(nbclassic_server, page):
         f"() => document.querySelector('.pane_outputs > img').naturalWidth === {drawn}"
     )
     expect(dashboard.locator(".pane_reset")).to_be_hidden()
+
+
+def test_alt_t_sends_and_runs_a_plot_ready_to_redraw(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(PLOT)], wait_for_kernel=True)
+    page.evaluate("() => { Jupyter.notebook.select(0); Jupyter.notebook.command_mode(); }")
+
+    with page.expect_popup() as popup:
+        page.keyboard.press("Alt+t")
+
+    expect(popup.value.locator(".pane_redraw")).to_be_visible()

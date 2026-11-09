@@ -2,7 +2,8 @@
  * cell_dashboard: send a code cell's outputs to a separate window, which shows a copy of them and
  * gets a new copy each time the cell finishes running. Nothing moves in the notebook's own page.
  * The toolbar button and the t key in command mode send the selected cell, and open the window
- * when none is open. Shift-t sends it to a pane stacked below another, for wide plots.
+ * when none is open. Shift-t sends it to a pane stacked below another, for wide plots. Alt-t and
+ * alt-shift-t do the same and then run the cell, so a plot it shows can be redrawn at once.
  *
  * The notebook and the window share a BroadcastChannel named from the notebook's path. Each side
  * announces itself when it loads. The window gets every linked cell, and the notebook takes back
@@ -28,6 +29,8 @@ define([
     const LINKED_CLASS = 'cell_dashboard_linked';
     const SEND_KEY = 't';
     const STACK_KEY = 'shift-t';
+    const SEND_AND_RUN_KEY = 'alt-t';
+    const STACK_AND_RUN_KEY = 'alt-shift-t';
 
     function loadStylesheet() {
         let link = document.createElement('link');
@@ -139,9 +142,22 @@ define([
             icon: 'fa-share-square-o',
             handler: () => sendSelected('bottom'),
         }, 'stack-cell-in-dashboard', 'cell_dashboard');
+        // only a cell linked before it runs gets figures the kernel can draw again
+        let sendAndRun = Jupyter.keyboard_manager.actions.register({
+            help: 'send the selected code cell to the dashboard, then run it',
+            icon: 'fa-share-square-o',
+            handler: () => sendSelected(null)?.execute(),
+        }, 'send-cell-to-dashboard-and-run', 'cell_dashboard');
+        let stackAndRun = Jupyter.keyboard_manager.actions.register({
+            help: 'send the selected code cell to a pane stacked below another, then run it',
+            icon: 'fa-share-square-o',
+            handler: () => sendSelected('bottom')?.execute(),
+        }, 'stack-cell-in-dashboard-and-run', 'cell_dashboard');
         Jupyter.toolbar.add_buttons_group([send]);
         Jupyter.keyboard_manager.command_shortcuts.add_shortcut(SEND_KEY, send);
         Jupyter.keyboard_manager.command_shortcuts.add_shortcut(STACK_KEY, stack);
+        Jupyter.keyboard_manager.command_shortcuts.add_shortcut(SEND_AND_RUN_KEY, sendAndRun);
+        Jupyter.keyboard_manager.command_shortcuts.add_shortcut(STACK_AND_RUN_KEY, stackAndRun);
     }
 
     function load_jupyter_extension() {
@@ -171,11 +187,12 @@ define([
         let showDashboard = () => {
             dashboard = openDashboard(channelName);
         };
-        // bringing an open window forward on every send would take the keyboard from the notebook
+        // bringing an open window forward on every send would take the keyboard from the notebook.
+        // Returns the cell sent, or null when the selection is not a code cell.
         let sendSelected = (edge) => {
             let cell = Jupyter.notebook.get_selected_cell();
             if (cell.cell_type !== 'code') {
-                return;
+                return null;
             }
             linkedIds.add(cell.id);
             markLinked(linkedIds);
@@ -184,6 +201,7 @@ define([
             if (dashboard === null || dashboard.closed) {
                 showDashboard();
             }
+            return cell;
         };
 
         channel.onmessage = ({data}) => {
