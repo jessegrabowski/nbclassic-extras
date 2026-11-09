@@ -278,18 +278,43 @@ test("a restarted kernel gets the helper again", async (t) => {
     assert.match(expressions(dashboard.kernelRequests.at(-1)).install, /\.install\(\)$/);
 });
 
-test("a render cut off by a restart lets the next one through", async (t) => {
+test("renders cut off or waiting when the kernel comes back are asked for again", async (t) => {
+    const dashboard = await linkedDashboard(t);
+    const waiting = "fedcba9876543210fedcba9876543210";
+    dashboard.channel.deliver(renderRequest(800, 600));
+    dashboard.channel.deliver({ ...renderRequest(400, 300), figure: waiting });
+    await dashboard.settle();
+    const cutOff = dashboard.kernelRequests.length - 1;
+
+    dashboard.restartKernel();
+    dashboard.answer(dashboard.kernelRequests.length - 1, { install: { installed: true } });
+    await dashboard.settle();
+    assert.match(expressions(dashboard.kernelRequests.at(-1)).render, /, 800, 600\)$/);
+    dashboard.answer(cutOff, { render: { png: "LATE", seconds: 0.1 } });
+    await dashboard.settle();
+    assert.deepEqual(dashboard.channel.posted.filter(({ type }) => type === "rendered"), []);
+
+    const redrawn = { render: { png: "BBBB", seconds: 0.1 } };
+    dashboard.answer(dashboard.kernelRequests.length - 1, redrawn);
+    await dashboard.settle();
+
+    assert.match(expressions(dashboard.kernelRequests.at(-1)).render,
+                 new RegExp(`${waiting}", 400, 300\\)$`));
+});
+
+test("a newer size waiting when the kernel comes back replaces the render cut off", async (t) => {
     const dashboard = await linkedDashboard(t);
     dashboard.channel.deliver(renderRequest(800, 600));
+    dashboard.channel.deliver(renderRequest(400, 300));
     await dashboard.settle();
 
     dashboard.restartKernel();
     dashboard.answer(dashboard.kernelRequests.length - 1, { install: { installed: true } });
     await dashboard.settle();
-    dashboard.channel.deliver(renderRequest(400, 300));
-    await dashboard.settle();
 
-    assert.match(expressions(dashboard.kernelRequests.at(-1)).render, /, 400, 300\)$/);
+    const renders = dashboard.kernelRequests.map(expressions).filter(({ render }) => render);
+    assert.deepEqual(renders.map(({ render }) => render.match(/\d+, \d+\)$/)[0]),
+                     ["800, 600)", "400, 300)"]);
 });
 
 test("closing a pane lets the kernel drop its cell's figures", async (t) => {

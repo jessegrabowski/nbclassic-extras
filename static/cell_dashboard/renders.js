@@ -89,7 +89,8 @@ define([
         // null until the helper is sent, then the kernel's answer to whether it installed
         let installed = null;
         let pending = new Map();
-        let rendering = false;
+        // the render the kernel is drawing, as {figure, width, height}, or null
+        let inFlight = null;
 
         // the extension can load after the kernel announced it was ready, so every send tries too
         let loadHelper = () => {
@@ -123,12 +124,13 @@ define([
         // one render at a time, and none while the kernel works, so requests cannot pile up behind
         // a long cell
         let renderNext = () => {
-            if (rendering || pending.size === 0 || Jupyter.notebook.kernel_busy) {
+            if (inFlight !== null || pending.size === 0 || Jupyter.notebook.kernel_busy) {
                 return;
             }
             let [[figure, {width, height}]] = pending;
             pending.delete(figure);
-            rendering = true;
+            let current = {figure, width, height};
+            inFlight = current;
             let ask = (isReady) => {
                 if (!isReady) {
                     return {render: null};
@@ -137,7 +139,11 @@ define([
                 return askKernel(Jupyter.notebook.kernel, '', {render});
             };
             Promise.resolve(installed).then(ask).then(({render}) => {
-                rendering = false;
+                // a render asked for again after the kernel came back answers in its place
+                if (inFlight !== current) {
+                    return;
+                }
+                inFlight = null;
                 if (render?.png === undefined) {
                     post({type: 'render_failed', figure, error: render?.error ?? 'no answer'});
                 } else {
@@ -177,12 +183,17 @@ define([
             return execute.apply(this, args);
         };
         Jupyter.notebook.events.on('kernel_idle.Kernel', renderNext);
-        // a started or restarted kernel holds no helper, and a render it was running never answers
+        // a restarted kernel holds no helper, and a reconnect can lose the answer to a render, so
+        // the render it was drawing goes back to the front, at a newer size if one is waiting
         Jupyter.notebook.events.on('kernel_ready.Kernel', () => {
             installed = null;
-            pending.clear();
-            rendering = false;
+            if (inFlight !== null) {
+                let {figure, width, height} = inFlight;
+                pending = new Map([[figure, {width, height}], ...pending]);
+            }
+            inFlight = null;
             loadHelper();
+            renderNext();
         });
 
         return {loadHelper, request, forget};
