@@ -228,6 +228,16 @@ test("the notebook announces itself when it loads", (t) => {
     assert.deepEqual(dashboard.announced, [{ type: "hello" }]);
 });
 
+test("a notebook still reading its file announces itself once its cells are there", (t) => {
+    const dashboard = loadCellDashboard({ cells: [], notebookLoaded: false });
+    t.after(dashboard.close);
+    assert.deepEqual(dashboard.announced, []);
+
+    dashboard.finishNotebookLoad();
+
+    assert.deepEqual(dashboard.channel.posted, [{ type: "hello" }]);
+});
+
 test("a dashboard's panes are linked again, and a pane whose cell is gone gets no index", (t) => {
     const dashboard = loadCellDashboard({ cells: [{ source: "a = 1" }, { source: "b = 2" }] });
     t.after(dashboard.close);

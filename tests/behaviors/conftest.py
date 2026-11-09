@@ -50,7 +50,8 @@ class NbclassicServer:
         if wait_for_kernel:
             page.wait_for_function(
                 "() => { var k = Jupyter.notebook.kernel;"
-                " return !!k && k.is_connected() && !!k.info_reply; }",
+                # info_reply starts out as {}, so only its language shows the kernel has answered
+                " return !!k && k.is_connected() && !!(k.info_reply.language_info || {}).name; }",
                 timeout=45000,
             )
         return name

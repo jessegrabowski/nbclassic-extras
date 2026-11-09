@@ -588,7 +588,8 @@ def test_a_reloaded_notebook_takes_back_its_links(nbclassic_server, page):
         "() => { const notebook = window.Jupyter && Jupyter.notebook;"
         " const kernel = notebook && notebook.kernel;"
         " return !!notebook && notebook._fully_loaded"
-        " && !!kernel && kernel.is_connected() && !!kernel.info_reply; }",
+        " && !!kernel && kernel.is_connected()"
+        " && !!(kernel.info_reply.language_info || {}).name; }",
         timeout=45000,
     )
     expect(page.locator(".cell.cell_dashboard_linked")).to_have_count(1)

@@ -12,12 +12,16 @@
  * A link is a cell id, looked up whenever it is used, because nbclassic builds a new cell object
  * when a delete is undone. A cut and paste gives the cell a new id, so a pasted cell has to be sent
  * again.
+ *
+ * renders.js redraws matplotlib figures at the size of their panes, in Python kernels. A cell
+ * tagged dashboard-no-redraw keeps the picture it drew, and costs the kernel nothing to hold.
  */
 define([
     'require',
     'base/js/namespace',
     'base/js/utils',
-], function (require, Jupyter, utils) {
+    './renders',
+], function (require, Jupyter, utils, renders) {
     "use strict";
 
     const DASHBOARD_PAGE = 'nbextensions/cell_dashboard/dashboard.html';
@@ -110,6 +114,14 @@ define([
         new MutationObserver(callback).observe(Jupyter.notebook.container[0], {childList: true});
     }
 
+    function afterNotebookLoads(callback) {
+        if (Jupyter.notebook._fully_loaded) {
+            callback();
+        } else {
+            Jupyter.notebook.events.one('notebook_loaded.Notebook', callback);
+        }
+    }
+
     // opening stays in the command palette, since sending opens the window the first time
     function registerActions(showDashboard, sendSelected) {
         Jupyter.keyboard_manager.actions.register({
@@ -138,6 +150,8 @@ define([
         let channel = new BroadcastChannel(channelName);
         let linkedIds = new Set();
         let dashboard = null;
+        let figures = renders.startRenders((id) => linkedIds.has(id),
+                                           (message) => channel.postMessage(message));
 
         let sendCell = (cell, edge = null) => channel.postMessage({...paneMessage(cell), edge});
         let sendLinked = (id) => {
@@ -150,6 +164,7 @@ define([
         let relinkPanes = (ids) => {
             ids.filter((id) => cellIndex(id) !== null).forEach((id) => linkedIds.add(id));
             markLinked(linkedIds);
+            figures.loadHelper();
             ids.forEach(sendLinked);
             channel.postMessage({type: 'indices', indices: ids.map((id) => [id, cellIndex(id)])});
         };
@@ -164,6 +179,7 @@ define([
             }
             linkedIds.add(cell.id);
             markLinked(linkedIds);
+            figures.loadHelper();
             sendCell(cell, edge);
             if (dashboard === null || dashboard.closed) {
                 showDashboard();
@@ -180,6 +196,8 @@ define([
                 relinkPanes(data.ids);
             } else if (data.type === 'jump') {
                 jumpToCell(data.id);
+            } else if (data.type === 'render') {
+                figures.request(data);
             }
         };
         onCellListChange(() => {
@@ -193,7 +211,8 @@ define([
             }
         });
         registerActions(showDashboard, sendSelected);
-        channel.postMessage({type: 'hello'});
+        // the dashboard's pane ids can only be matched once the notebook's cells exist
+        afterNotebookLoads(() => channel.postMessage({type: 'hello'}));
     }
 
     return {
