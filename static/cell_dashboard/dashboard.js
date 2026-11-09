@@ -10,21 +10,13 @@
  * changed since it was shown, or any failure, leaves the PNG the cell showed, and a plot that takes
  * too long to draw is redrawn only on request.
  *
- * HTML from a notebook that is not trusted shows as text, because this page has no sanitizer. SVG
- * is safe either way, because an image source runs no scripts. HTML that carries a script shows as
- * text too, because scripts inserted into a page do not run, so the plot or widget it builds would
- * be missing.
+ * outputs.js builds what each output shows.
  */
 (function () {
     "use strict";
 
-    // control sequences such as colors and cursor moves, and the hyperlinks some terminals show
-    const ANSI_ESCAPE = /\x1b(?:\[[\d;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
-    const SCRIPT_TAG = /<script\b/i;
     const PANE_DRAG_TYPE = 'application/x-cell-dashboard-pane';
     const DISCONNECTED_CLASS = 'pane_disconnected';
-    const METADATA_KEY = 'cell_dashboard';
-    const FIGURE_ID = /^[0-9a-f]{32}$/;
     const LONGEST_SIDE = 3840;
     const RESIZE_SETTLE_MS = 250;
 
@@ -40,6 +32,7 @@
         clampRatio,
         edgeAt,
     } = window.cellDashboardTree;
+    const {isFigureId, renderOutput} = window.cellDashboardOutputs;
     const channelName = new URLSearchParams(window.location.search).get('channel');
     const channel = new BroadcastChannel(channelName);
     const panes = new Map();
@@ -97,65 +90,6 @@
         }
     }
 
-    function imageFrom(source) {
-        let image = document.createElement('img');
-        image.src = source;
-        return image;
-    }
-
-    function preformatted(text) {
-        let pre = document.createElement('pre');
-        pre.textContent = text.replace(ANSI_ESCAPE, '');
-        return pre;
-    }
-
-    function trustedHtml(markup) {
-        let container = document.createElement('div');
-        container.innerHTML = markup;
-        return container;
-    }
-
-    // in nbclassic's order of preference, and the first type an output carries is the one shown
-    const RENDERERS = new Map([
-        ['text/html', trustedHtml],
-        ['image/svg+xml', (svg) => imageFrom(`data:image/svg+xml,${encodeURIComponent(svg)}`)],
-        ['image/png', (data) => imageFrom(`data:image/png;base64,${data}`)],
-        ['image/jpeg', (data) => imageFrom(`data:image/jpeg;base64,${data}`)],
-        ['image/gif', (data) => imageFrom(`data:image/gif;base64,${data}`)],
-        ['text/plain', preformatted],
-    ]);
-
-    function isShowable(mime, value, trusted) {
-        return mime !== 'text/html' || (trusted && !SCRIPT_TAG.test(value));
-    }
-
-    function renderData(data, trusted) {
-        let type = [...RENDERERS.keys()]
-            .find((mime) => mime in data && isShowable(mime, data[mime], trusted));
-        return type === undefined ? [] : [RENDERERS.get(type)(data[type])];
-    }
-
-    function renderOutput(output, trusted) {
-        switch (output.output_type) {
-            case 'stream':
-                return [preformatted(output.text)];
-            case 'error':
-                return [preformatted(output.traceback.join('\n'))];
-            default:
-                return withFigureId(renderData(output.data, trusted), output.metadata);
-        }
-    }
-
-    function withFigureId(elements, metadata) {
-        let figure = metadata?.[METADATA_KEY]?.figure;
-        if (typeof figure === 'string' && FIGURE_ID.test(figure)) {
-            elements.filter((element) => element.tagName === 'IMG').forEach((image) => {
-                image.dataset.figure = figure;
-            });
-        }
-        return elements;
-    }
-
     // in device pixels, so the drawing is sharp, with the longest side kept in bounds
     function pixelSize(image) {
         let ratio = window.devicePixelRatio || 1;
@@ -205,7 +139,7 @@
 
     // a drawing that arrives after a reset was asked for before it, so it is dropped
     function showRender({figure, png, slow}) {
-        if (!FIGURE_ID.test(figure)) {
+        if (!isFigureId(figure)) {
             return;
         }
         for (let image of figureImages(figure).filter((image) => requestedSizes.has(image))) {
@@ -233,7 +167,7 @@
 
     // a refused figure keeps the drawing it shows and can only be reset
     function showRefusal({figure}) {
-        if (!FIGURE_ID.test(figure)) {
+        if (!isFigureId(figure)) {
             return;
         }
         failedFigures.add(figure);

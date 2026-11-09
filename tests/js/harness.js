@@ -20,6 +20,7 @@ const CELL_DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "main.js"), "
 const DASHBOARD_HTML = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.html"), "utf8");
 const DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.js"), "utf8");
 const PANE_TREE_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "tree.js"), "utf8");
+const DASHBOARD_OUTPUTS_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "outputs.js"), "utf8");
 const RENDERS_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "renders.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
@@ -1181,6 +1182,7 @@ function loadDashboardPage({ channelName, storedLayout = null, autoPanes = null 
         window.localStorage.setItem(autoKey, JSON.stringify(autoPanes));
     }
     window.eval(PANE_TREE_JS);
+    window.eval(DASHBOARD_OUTPUTS_JS);
     window.eval(DASHBOARD_JS);
 
     return {
