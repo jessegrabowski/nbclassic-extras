@@ -10,6 +10,11 @@
  * changed since it was shown, or any failure, leaves the PNG the cell showed, and a plot that takes
  * too long to draw is redrawn only on request.
  *
+ * [< n/m >], centered in each pane's header, steps through the outputs of the runs of its cell,
+ * which the notebook keeps. It stays gray until the cell has run twice. An earlier version shows
+ * the PNGs its run drew, since the kernel keeps only the latest run's figures, and the next run
+ * brings the pane back to the latest.
+ *
  * outputs.js builds what each output shows.
  */
 (function () {
@@ -319,6 +324,39 @@
         requestRenders(pane);
     }
 
+    function showVersions(pane, version, versions) {
+        let controls = pane.querySelector('.pane_versions');
+        controls.classList.toggle('pane_single', versions < 2);
+        controls.classList.toggle('pane_past', version < versions);
+        // the outputs a cell had when it was sent are its one version until it runs
+        let [shown, count] = [Math.max(version, 1), Math.max(versions, 1)];
+        controls.querySelector('.pane_version').textContent = `${shown}/${count}`;
+        controls.querySelector('.pane_older').disabled = version <= 1;
+        controls.querySelector('.pane_newer').disabled = version >= versions;
+        pane.dataset.version = version;
+    }
+
+    function askForVersion(pane, id, step) {
+        channel.postMessage({type: 'version', id, version: Number(pane.dataset.version) + step});
+    }
+
+    function versionControls(pane, id) {
+        let older = paneButton('[<', 'show the outputs of the run before', () => {
+            askForVersion(pane, id, -1);
+        });
+        older.classList.add('pane_older');
+        let newer = paneButton('>]', 'show the outputs of the run after', () => {
+            askForVersion(pane, id, 1);
+        });
+        newer.classList.add('pane_newer');
+        let label = document.createElement('span');
+        label.className = 'pane_version';
+        let controls = document.createElement('span');
+        controls.className = 'pane_versions';
+        controls.append(older, label, newer);
+        return controls;
+    }
+
     function closePane(id) {
         autoPanes.delete(id);
         manualPanes.delete(id);
@@ -367,7 +405,12 @@
         auto.classList.add('pane_auto');
         let header = document.createElement('header');
         header.className = 'pane_header';
-        header.append(title, redraw, reset, auto, jump, close);
+        // the buttons on the right come and go, so they get a column of their own and leave the
+        // version controls where they are
+        let actions = document.createElement('span');
+        actions.className = 'pane_actions';
+        actions.append(redraw, reset, auto, jump, close);
+        header.append(title, versionControls(pane, id), actions);
         let outputs = document.createElement('div');
         outputs.className = 'pane_outputs';
         pane.append(header, outputs);
@@ -408,15 +451,27 @@
 
     // edge only comes with a send that asks for a side, so a refresh or a reload places panes
     // freely
-    function showPane({id, index, title, outputs, trusted, edge = null}) {
+    function showPane({
+        id,
+        index,
+        title,
+        outputs,
+        trusted,
+        edge = null,
+        version = 0,
+        versions = 0,
+    }) {
         if (!panes.has(id)) {
             addPane(id, edge);
         }
         let pane = panes.get(id);
+        let redrawable = version === versions;
         pane.querySelector('.pane_title').textContent = title;
         showIndex(id, index);
-        paneOutputs(pane)
-            .replaceChildren(...outputs.flatMap((output) => renderOutput(output, trusted)));
+        showVersions(pane, version, versions);
+        paneOutputs(pane).replaceChildren(...outputs.flatMap((output) => {
+            return renderOutput(output, {trusted, redrawable});
+        }));
         showRedrawControls(pane);
         requestRenders(pane);
     }

@@ -68,14 +68,17 @@ window.cellDashboardOutputs = (function () {
         return elements;
     }
 
-    function renderOutput(output, trusted) {
+    // redrawable says whether the kernel still holds the figures these outputs name
+    function renderOutput(output, {trusted, redrawable}) {
         switch (output.output_type) {
             case 'stream':
                 return [preformatted(output.text)];
             case 'error':
                 return [preformatted(output.traceback.join('\n'))];
-            default:
-                return withFigureId(renderData(output.data, trusted), output.metadata);
+            default: {
+                let elements = renderData(output.data, trusted);
+                return redrawable ? withFigureId(elements, output.metadata) : elements;
+            }
         }
     }
 

@@ -1015,7 +1015,10 @@ function loadCellDashboard({
         execute() {
             ran.push(this.id);
         }
+
+        _handle_execute_reply() {}
     }
+    let runCount = 0;
 
     const made = cells.map((spec, index) => Object.assign(new CodeCell(), {
         id: `cell-${index}`,
@@ -1071,6 +1074,7 @@ function loadCellDashboard({
     const extension = defineExtension(window, CELL_DASHBOARD_JS)(fakeRequire,
                                                                  jupyter,
                                                                  utils,
+                                                                 codecell,
                                                                  renders);
     extension.load_jupyter_extension();
     // what the notebook posted while loading, kept apart from what the tests make it post
@@ -1139,8 +1143,27 @@ function loadCellDashboard({
             selected = index;
         },
         run: (name) => actions.get(`cell_dashboard:${name}`).handler(),
-        finishRunning(index) {
-            notebook.events.trigger("finished_execute.CodeCell", { cell: made[index] });
+        // as a run ends: the kernel's reply to the request, and the kernel going idle, in either
+        // order. nbclassic fires one idle event per run of a cell started before it finished.
+        finishRunning(index, { status = "ok", replyFirst = true, idles = 1 } = {}) {
+            const cell = made[index];
+            cell.last_msg_id = `run-${runCount++}`;
+            const reply = () => cell._handle_execute_reply({
+                parent_header: { msg_id: cell.last_msg_id },
+                content: { status: status },
+            });
+            const idle = () => {
+                for (let count = 0; count < idles; count++) {
+                    notebook.events.trigger("finished_execute.CodeCell", { cell: cell });
+                }
+            };
+            if (replyFirst) {
+                reply();
+                idle();
+            } else {
+                idle();
+                reply();
+            }
         },
         close: () => closePage(window),
     };
