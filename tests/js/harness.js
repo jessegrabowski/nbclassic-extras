@@ -36,9 +36,16 @@ function nbclassicStatic() {
     if (!prefix) {
         throw new Error("CONDA_PREFIX is unset; run the JS tests through `pixi run js-test`");
     }
+    // an environment upgraded in place can keep the folder of its old Python beside the new one
     const lib = path.join(prefix, "lib");
-    const python = fs.readdirSync(lib).find((name) => /^python3\.\d+$/.test(name));
-    return path.join(lib, python, "site-packages", "nbclassic", "static");
+    const statics = fs.readdirSync(lib)
+        .filter((name) => /^python3\.\d+$/.test(name))
+        .map((name) => path.join(lib, name, "site-packages", "nbclassic", "static"));
+    const found = statics.find((candidate) => fs.existsSync(candidate));
+    if (found === undefined) {
+        throw new Error(`nbclassic is not installed under ${lib}`);
+    }
+    return found;
 }
 
 const PAGE = `<!DOCTYPE html><html><head></head><body>
