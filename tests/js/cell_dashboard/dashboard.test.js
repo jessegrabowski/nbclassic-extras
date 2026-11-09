@@ -440,3 +440,272 @@ test("a new message replaces the pane's outputs", (t) => {
 
     assert.equal(page.outputs().children.length, 0);
 });
+
+const FIGURE = "0123456789abcdef0123456789abcdef";
+
+function plot(figure = FIGURE) {
+    return {
+        output_type: "display_data",
+        data: { "image/png": "AAAA", "text/plain": "<Figure>" },
+        metadata: { cell_dashboard: { figure: figure } },
+    };
+}
+
+// jsdom lays nothing out, so every element reports one size, at twice the pixel density, and the
+// returned function changes that size
+function withLayout(page, width = 400, height = 300) {
+    const window = page.document.defaultView;
+    const size = { width: width, height: height };
+    Object.defineProperty(window.HTMLElement.prototype, "clientWidth", { get: () => size.width });
+    Object.defineProperty(window.HTMLElement.prototype, "clientHeight", { get: () => size.height });
+    window.devicePixelRatio = 2;
+    return (newWidth, newHeight) => Object.assign(size, { width: newWidth, height: newHeight });
+}
+
+function renderRequests(page) {
+    return page.channel.posted.filter(({ type }) => type === "render");
+}
+
+const AUTO = ["cell-a", "cell-b"];
+
+test("a lone plot with a figure id asks to be drawn at its pane size", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+
+    page.channel.deliver(pane([plot()]));
+
+    assert.deepEqual(renderRequests(page),
+                     [{ type: "render", figure: FIGURE, width: 800, height: 600 }]);
+});
+
+test("a plot beside other outputs, or without a usable id, asks for nothing", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+    const stream = { output_type: "stream", name: "stdout", text: "fit\n" };
+
+    page.channel.deliver(pane([stream, plot()], { id: "cell-a" }));
+    page.channel.deliver(pane([plot("not-an-id")], { id: "cell-b" }));
+
+    assert.deepEqual(renderRequests(page), []);
+});
+
+test("a size already asked for is not asked again, and a new one is", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    const resize = withLayout(page);
+    page.channel.deliver(pane([plot()]));
+
+    page.channel.deliver(pane([], { id: "cell-b" }));
+    assert.equal(renderRequests(page).length, 1);
+
+    resize(200, 300);
+    page.channel.deliver(pane([], { id: "cell-c" }));
+    assert.deepEqual(renderRequests(page).at(-1),
+                     { type: "render", figure: FIGURE, width: 400, height: 600 });
+});
+
+test("a drawing replaces the plot it was asked for", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: false });
+
+    assert.equal(page.outputs().querySelector("img").getAttribute("src"),
+                 "data:image/png;base64,BBBB");
+    assert.equal(page.document.querySelector(".pane_redraw").hidden, true);
+});
+
+test("a slow drawing stops asking on its own and offers a redraw button", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    const resize = withLayout(page);
+    page.channel.deliver(pane([plot()], { id: "cell-a" }));
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: true });
+    const redraw = page.document.querySelector(".pane_redraw");
+    assert.equal(redraw.hidden, false);
+    page.channel.posted.length = 0;
+
+    resize(200, 300);
+    page.channel.deliver(pane([], { id: "cell-b" }));
+    assert.deepEqual(renderRequests(page), []);
+
+    redraw.click();
+    assert.equal(renderRequests(page).length, 1);
+});
+
+test("a refused plot is never asked for again", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    const resize = withLayout(page);
+    page.channel.deliver(pane([plot()], { id: "cell-a" }));
+    page.channel.deliver({ type: "render_failed", figure: FIGURE, error: "changed" });
+    page.channel.posted.length = 0;
+
+    resize(200, 300);
+    page.channel.deliver(pane([], { id: "cell-b" }));
+
+    assert.deepEqual(renderRequests(page), []);
+    assert.equal(page.outputs().querySelector("img").getAttribute("src"),
+                 "data:image/png;base64,AAAA");
+});
+
+function paneButtons(page) {
+    const header = page.document.querySelector(".pane_header");
+    return {
+        auto: header.querySelector(".pane_auto"),
+        redraw: header.querySelector(".pane_redraw"),
+        reset: header.querySelector(".pane_reset"),
+    };
+}
+
+test("a new pane keeps its drawing and offers the auto and redraw buttons", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    const resize = withLayout(page);
+
+    page.channel.deliver(pane([{ output_type: "stream", name: "stdout", text: "fit\n" }]));
+    assert.equal(paneButtons(page).auto.hidden, true);
+
+    page.channel.deliver(pane([plot()], { id: "cell-a" }));
+    resize(200, 300);
+    page.channel.deliver(pane([], { id: "cell-b" }));
+    assert.deepEqual(renderRequests(page), []);
+    assert.equal(paneButtons(page).auto.hidden, false);
+    assert.equal(paneButtons(page).auto.getAttribute("aria-pressed"), "false");
+    assert.equal(paneButtons(page).redraw.hidden, false);
+
+    paneButtons(page).redraw.click();
+    assert.equal(renderRequests(page).length, 1);
+});
+
+test("turning auto on asks for a drawing at once and hides the redraw button", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+
+    paneButtons(page).auto.click();
+
+    assert.deepEqual(renderRequests(page),
+                     [{ type: "render", figure: FIGURE, width: 800, height: 600 }]);
+    assert.equal(paneButtons(page).auto.getAttribute("aria-pressed"), "true");
+    assert.equal(paneButtons(page).redraw.hidden, true);
+});
+
+test("turning auto off again stops redraws", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    const resize = withLayout(page);
+    page.channel.deliver(pane([plot()], { id: "cell-a" }));
+
+    paneButtons(page).auto.click();
+    page.channel.posted.length = 0;
+    resize(200, 300);
+    page.channel.deliver(pane([], { id: "cell-b" }));
+
+    assert.equal(paneButtons(page).auto.getAttribute("aria-pressed"), "false");
+    assert.deepEqual(renderRequests(page), []);
+});
+
+test("reset puts back the cell's drawing and offers itself only after a redraw", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+    const image = page.outputs().querySelector("img");
+    assert.equal(paneButtons(page).reset.hidden, true);
+
+    paneButtons(page).redraw.click();
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: false });
+    assert.equal(paneButtons(page).reset.hidden, false);
+
+    paneButtons(page).reset.click();
+    assert.equal(image.getAttribute("src"), "data:image/png;base64,AAAA");
+    assert.equal(paneButtons(page).reset.hidden, true);
+});
+
+test("a drawing that arrives after a reset is dropped", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+    paneButtons(page).redraw.click();
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: false });
+    paneButtons(page).redraw.click();
+
+    paneButtons(page).reset.click();
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "CCCC", slow: false });
+
+    assert.equal(page.outputs().querySelector("img").getAttribute("src"),
+                 "data:image/png;base64,AAAA");
+});
+
+test("reset stays hidden while auto would redraw the plot", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: false });
+
+    assert.equal(paneButtons(page).reset.hidden, true);
+});
+
+test("a redrawn pane sent again asks for its drawing again", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: false });
+
+    page.channel.deliver(pane([plot()]));
+
+    assert.equal(renderRequests(page).length, 2);
+});
+
+test("a refused plot keeps its drawing and offers only a reset", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: false });
+
+    page.channel.deliver({ type: "render_failed", figure: FIGURE, error: "unknown figure" });
+
+    assert.equal(page.outputs().querySelector("img").getAttribute("src"),
+                 "data:image/png;base64,BBBB");
+    const { auto, redraw, reset } = paneButtons(page);
+    assert.deepEqual([auto.hidden, redraw.hidden, reset.hidden], [true, true, false]);
+});
+
+test("the auto choice is stored and comes back with the window", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()], { id: "cell-a" }));
+
+    paneButtons(page).auto.click();
+    assert.deepEqual(page.storedAutoPanes(), ["cell-a"]);
+
+    const reopened = loadDashboardPage({ channelName: CHANNEL, autoPanes: ["cell-a"] });
+    t.after(reopened.close);
+    withLayout(reopened);
+    reopened.channel.deliver(pane([plot()], { id: "cell-a" }));
+    assert.equal(renderRequests(reopened).length, 1);
+    assert.equal(paneButtons(reopened).auto.getAttribute("aria-pressed"), "true");
+});
+
+test("closing a pane forgets its auto choice", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: ["cell-a"] });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()], { id: "cell-a" }));
+
+    page.document.querySelector(".pane_button[title^='close']").click();
+
+    assert.deepEqual(page.storedAutoPanes(), []);
+});

@@ -1160,8 +1160,9 @@ function loadPaneTree() {
  * @param {object} options
  * @param {string} options.channelName - the channel the notebook gave the window.
  * @param {object} [options.storedLayout] - a layout tree already in local storage for the channel.
+ * @param {Array} [options.autoPanes] - pane ids already stored as redrawn at their size.
  */
-function loadDashboardPage({ channelName, storedLayout = null }) {
+function loadDashboardPage({ channelName, storedLayout = null, autoPanes = null }) {
     const { virtualConsole, closePage } = strictConsole();
     const query = `channel=${encodeURIComponent(channelName)}`;
     const dom = new JSDOM(DASHBOARD_HTML, {
@@ -1172,8 +1173,12 @@ function loadDashboardPage({ channelName, storedLayout = null }) {
     const window = dom.window;
     const channel = fakeBroadcastChannel(window);
     const layoutKey = `cell_dashboard.layout:${channelName}`;
+    const autoKey = `cell_dashboard.auto:${channelName}`;
     if (storedLayout !== null) {
         window.localStorage.setItem(layoutKey, JSON.stringify(storedLayout));
+    }
+    if (autoPanes !== null) {
+        window.localStorage.setItem(autoKey, JSON.stringify(autoPanes));
     }
     window.eval(PANE_TREE_JS);
     window.eval(DASHBOARD_JS);
@@ -1182,6 +1187,7 @@ function loadDashboardPage({ channelName, storedLayout = null }) {
         channel: channel,
         document: window.document,
         storedLayout: () => JSON.parse(window.localStorage.getItem(layoutKey)),
+        storedAutoPanes: () => JSON.parse(window.localStorage.getItem(autoKey)),
         title: () => window.document.querySelector(".pane_title").textContent,
         outputs: () => window.document.querySelector(".pane_outputs"),
         close: () => closePage(window),

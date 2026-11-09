@@ -145,6 +145,11 @@ body {
     color: #333;
 }
 
+.pane_auto[aria-pressed="true"] {
+    color: #333;
+    font-weight: bold;
+}
+
 /* a pane whose cell left the notebook keeps its last outputs, dimmed */
 .pane_disconnected .pane_title {
     text-decoration: line-through;

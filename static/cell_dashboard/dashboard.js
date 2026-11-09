@@ -4,6 +4,12 @@
  * local storage for each notebook, and a reopened window puts returning panes back where they
  * were.
  *
+ * The kernel can draw a plot alone in its pane again at the pane's size, when the notebook can do
+ * that. [r] asks for one redraw and [0] puts back the PNG the cell showed. [oo] makes a pane redraw
+ * whenever its size changes, and the choice is kept with the arrangement. A plot that changed since
+ * it was shown, or any failure, leaves the PNG the cell showed, and a plot that takes too long to
+ * draw is redrawn only on request.
+ *
  * HTML from a notebook that is not trusted shows as text, because this page has no sanitizer. SVG
  * is safe either way, because an image source runs no scripts. HTML that carries a script shows as
  * text too, because scripts inserted into a page do not run, so the plot or widget it builds would
@@ -17,6 +23,10 @@
     const SCRIPT_TAG = /<script\b/i;
     const PANE_DRAG_TYPE = 'application/x-cell-dashboard-pane';
     const DISCONNECTED_CLASS = 'pane_disconnected';
+    const METADATA_KEY = 'cell_dashboard';
+    const FIGURE_ID = /^[0-9a-f]{32}$/;
+    const LARGEST_SIDE = 3840;
+    const RESIZE_SETTLE_MS = 250;
 
     const {
         isLeaf,
@@ -35,8 +45,19 @@
     const panes = new Map();
     const root = document.getElementById('panes');
     const layoutKey = `cell_dashboard.layout:${channelName}`;
+    const autoKey = `cell_dashboard.auto:${channelName}`;
     let layout = null;
     let draggedPane = null;
+    // by figure id: the figures drawn only on request, and the ones the kernel refused
+    const manualFigures = new Set();
+    const failedFigures = new Set();
+    // by image, so a pane sent again asks afresh: the size last asked for, and the drawing its
+    // cell made, kept while the image shows a redraw
+    const requestedSizes = new WeakMap();
+    const cellDrawings = new WeakMap();
+    // the panes whose plots are drawn again whenever their size changes. Every other pane keeps
+    // the drawing its cell made until asked, since a plot can be expensive to draw.
+    const autoPanes = new Set(storedAutoPanes());
     // the arrangement to rebuild as panes return, until a pane outside it arrives or the user
     // rearranges
     let savedLayout = storedLayout();
@@ -46,6 +67,23 @@
             return JSON.parse(window.localStorage.getItem(layoutKey));
         } catch (error) {
             return null;
+        }
+    }
+
+    function storedAutoPanes() {
+        try {
+            let ids = JSON.parse(window.localStorage.getItem(autoKey));
+            return Array.isArray(ids) ? ids : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function storeAutoPanes() {
+        try {
+            window.localStorage.setItem(autoKey, JSON.stringify([...autoPanes]));
+        } catch (error) {
+            console.warn('cell_dashboard: the redraw choice will not outlast this window', error);
         }
     }
 
@@ -102,8 +140,100 @@
             case 'error':
                 return [preformatted(output.traceback.join('\n'))];
             default:
-                return renderData(output.data, trusted);
+                return withFigureId(renderData(output.data, trusted), output.metadata);
         }
+    }
+
+    function withFigureId(elements, metadata) {
+        let figure = metadata?.[METADATA_KEY]?.figure;
+        if (typeof figure === 'string' && FIGURE_ID.test(figure)) {
+            elements.filter((element) => element.tagName === 'IMG').forEach((image) => {
+                image.dataset.figure = figure;
+            });
+        }
+        return elements;
+    }
+
+    // in device pixels, so the drawing is sharp, with the longest side kept in bounds
+    function pixelSize(image) {
+        let ratio = window.devicePixelRatio || 1;
+        let longest = Math.max(image.clientWidth, image.clientHeight) * ratio;
+        let shrink = Math.min(1, LARGEST_SIDE / longest);
+        return {
+            width: Math.round(image.clientWidth * ratio * shrink),
+            height: Math.round(image.clientHeight * ratio * shrink),
+        };
+    }
+
+    // only a plot alone in its pane fills it, so only such a plot is worth drawing again
+    function redrawableImages(within) {
+        return [...within.querySelectorAll('.pane_outputs > img:only-child[data-figure]')];
+    }
+
+    function isRefused(image) {
+        return failedFigures.has(image.dataset.figure);
+    }
+
+    function figureImages(figure) {
+        return [...root.querySelectorAll(`img[data-figure="${figure}"]`)];
+    }
+
+    function isAutoPane(pane) {
+        return autoPanes.has(pane.dataset.pane);
+    }
+
+    function requestRenders(within, {onRequest = false} = {}) {
+        for (let image of redrawableImages(within)) {
+            let figure = image.dataset.figure;
+            let waitsForRequest = manualFigures.has(figure) || !isAutoPane(image.closest('.pane'));
+            if (isRefused(image) || (waitsForRequest && !onRequest)) {
+                continue;
+            }
+            let {width, height} = pixelSize(image);
+            let size = `${width}x${height}`;
+            if (width < 1 || height < 1 || (requestedSizes.get(image) === size && !onRequest)) {
+                continue;
+            }
+            requestedSizes.set(image, size);
+            channel.postMessage({type: 'render', figure, width, height});
+        }
+    }
+
+    // a drawing that arrives after a reset was asked for before it, so it is dropped
+    function showRender({figure, png, slow}) {
+        if (!FIGURE_ID.test(figure)) {
+            return;
+        }
+        if (slow) {
+            manualFigures.add(figure);
+        }
+        for (let image of figureImages(figure).filter((image) => requestedSizes.has(image))) {
+            if (!cellDrawings.has(image)) {
+                cellDrawings.set(image, image.src);
+            }
+            image.src = `data:image/png;base64,${png}`;
+            showRedrawControls(image.closest('.pane'));
+        }
+    }
+
+    function resetDrawings(pane) {
+        for (let image of redrawableImages(pane)) {
+            if (cellDrawings.has(image)) {
+                image.src = cellDrawings.get(image);
+                cellDrawings.delete(image);
+            }
+            requestedSizes.delete(image);
+        }
+        showRedrawControls(pane);
+    }
+
+    // a refused figure keeps the drawing it shows and can only be reset
+    function showRefusal({figure}) {
+        if (!FIGURE_ID.test(figure)) {
+            return;
+        }
+        failedFigures.add(figure);
+        figureImages(figure).forEach((image) => showRedrawControls(image.closest('.pane')));
     }
 
     // an element loses its scroll position when it leaves the page
@@ -148,6 +278,7 @@
                 divider.removeEventListener('pointermove', follow);
                 savedLayout = null;
                 storeLayout();
+                requestRenders(root);
             }, {once: true});
         });
         divider.addEventListener('dblclick', () => {
@@ -191,6 +322,7 @@
             whole.style.flex = '';
             root.replaceChildren(whole);
         });
+        requestRenders(root);
     }
 
     function edgeUnderPointer({clientX, clientY}, pane) {
@@ -223,7 +355,36 @@
         });
     }
 
+    // the buttons only mean something for a pane holding a plot the kernel can draw again
+    function showRedrawControls(pane) {
+        let images = redrawableImages(pane);
+        let live = images.filter((image) => !isRefused(image));
+        let auto = pane.querySelector('.pane_auto');
+        auto.hidden = live.length === 0;
+        auto.setAttribute('aria-pressed', String(isAutoPane(pane)));
+        let slow = live.some((image) => manualFigures.has(image.dataset.figure));
+        let waiting = !isAutoPane(pane) || slow;
+        pane.querySelector('.pane_redraw').hidden = live.length === 0 || !waiting;
+        // a reset only lasts while nothing would draw the plot again on its own
+        let resettable = images.some((image) => cellDrawings.has(image)
+            && (isRefused(image) || waiting));
+        pane.querySelector('.pane_reset').hidden = !resettable;
+    }
+
+    function toggleAuto(pane, id) {
+        if (autoPanes.has(id)) {
+            autoPanes.delete(id);
+        } else {
+            autoPanes.add(id);
+        }
+        storeAutoPanes();
+        showRedrawControls(pane);
+        requestRenders(pane);
+    }
+
     function closePane(id) {
+        autoPanes.delete(id);
+        storeAutoPanes();
         panes.delete(id);
         rearrange(without(layout, id));
         channel.postMessage({type: 'unlink', id});
@@ -241,6 +402,7 @@
     function newPane(id) {
         let pane = document.createElement('section');
         pane.className = 'pane';
+        pane.dataset.pane = id;
         let title = document.createElement('h1');
         title.className = 'pane_title';
         title.draggable = true;
@@ -253,9 +415,21 @@
             channel.postMessage({type: 'jump', id});
         });
         let close = paneButton('[x]', 'close this pane', () => closePane(id));
+        let redraw = paneButton('[r]', 'draw this plot again at the pane size', () => {
+            requestRenders(pane, {onRequest: true});
+        });
+        redraw.classList.add('pane_redraw');
+        let reset = paneButton('[0]', 'show this plot at the size its cell drew it', () => {
+            resetDrawings(pane);
+        });
+        reset.classList.add('pane_reset');
+        let auto = paneButton('[oo]',
+                              'turn redrawing whenever the pane size changes on or off',
+                              () => toggleAuto(pane, id));
+        auto.classList.add('pane_auto');
         let header = document.createElement('header');
         header.className = 'pane_header';
-        header.append(title, jump, close);
+        header.append(title, redraw, reset, auto, jump, close);
         let outputs = document.createElement('div');
         outputs.className = 'pane_outputs';
         pane.append(header, outputs);
@@ -305,6 +479,16 @@
         showIndex(id, index);
         paneOutputs(pane)
             .replaceChildren(...outputs.flatMap((output) => renderOutput(output, trusted)));
+        showRedrawControls(pane);
+        requestRenders(pane);
+    }
+
+    function redrawAfterResizing() {
+        let timer = null;
+        window.addEventListener('resize', () => {
+            window.clearTimeout(timer);
+            timer = window.setTimeout(() => requestRenders(root), RESIZE_SETTLE_MS);
+        });
     }
 
     document.addEventListener('dragend', endDrag);
@@ -315,7 +499,12 @@
             data.indices.forEach(([id, index]) => showIndex(id, index));
         } else if (data.type === 'hello') {
             channel.postMessage({type: 'panes', ids: [...panes.keys()]});
+        } else if (data.type === 'rendered') {
+            showRender(data);
+        } else if (data.type === 'render_failed') {
+            showRefusal(data);
         }
     };
+    redrawAfterResizing();
     channel.postMessage({type: 'ready'});
 })();
