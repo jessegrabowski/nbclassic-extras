@@ -48,13 +48,21 @@ class Kernel:
             return result["data"]["application/json"]
         return ast.literal_eval(result["data"]["text/plain"])
 
-    def load_helper(self):
+    def load_helper(self, source=None):
+        """Load the helper as the notebook's loader does, replacing one with another source."""
+        source = HELPER.read_text() if source is None else source
         self.run(
             "import sys, types\n"
-            "module = types.ModuleType('cell_dashboard_figures')\n"
-            f"exec(compile({HELPER.read_text()!r}, 'figures.py', 'exec'), module.__dict__)\n"
-            "sys.modules['cell_dashboard_figures'] = module\n"
-            "del sys, types, module"
+            f"source = {source!r}\n"
+            "old = sys.modules.get('cell_dashboard_figures')\n"
+            "if getattr(old, 'SOURCE', None) != source:\n"
+            "    if hasattr(old, 'uninstall'):\n"
+            "        old.uninstall()\n"
+            "    module = types.ModuleType('cell_dashboard_figures')\n"
+            "    module.SOURCE = source\n"
+            "    exec(compile(source, 'figures.py', 'exec'), module.__dict__)\n"
+            "    sys.modules['cell_dashboard_figures'] = module\n"
+            "del sys, types, source, old"
         )
         return self.ask(f"{MODULE}.install()")
 
@@ -260,6 +268,18 @@ def test_a_render_at_an_empty_size_gets_an_error(kernel):
     [figure_id] = figure_ids(run_armed(kernel, PLOT))
 
     assert kernel.ask(f"{MODULE}.render({figure_id!r}, 0, 300)") == {"error": "not a size"}
+
+
+def test_a_changed_helper_replaces_the_one_a_kernel_holds(kernel):
+    kernel.load_helper()
+    run_armed(kernel, PLOT)
+
+    assert kernel.load_helper(source=HELPER.read_text() + "\nREPLACED = True\n") == {
+        "installed": True
+    }
+
+    assert kernel.ask(f"{MODULE}.REPLACED") is True
+    assert len(figure_ids(run_armed(kernel, PLOT))) == 1
 
 
 def test_arming_refuses_anything_but_a_cell_id(kernel):

@@ -2,9 +2,10 @@
 # them again at the size of the pane showing them.
 #
 # The notebook sends this file's source to the kernel and runs it as the module
-# cell_dashboard_figures, so it never has to be installed in the kernel's environment. Everything
-# it offers the notebook goes through user expressions on silent executes, which leave the
-# execution count and the cells' outputs alone, and every answer is a JSON object.
+# cell_dashboard_figures, so it never has to be installed in the kernel's environment. A kernel
+# holding a different source replaces it, after uninstall() takes the old one's hooks out.
+# Everything it offers the notebook goes through user expressions on silent executes, which leave
+# the execution count and the cells' outputs alone, and every answer is a JSON object.
 #
 # The helper never imports matplotlib itself. Its formatter is registered by the figure class's
 # name, so a kernel without matplotlib loads it and simply never sees a figure.
@@ -186,6 +187,20 @@ def install():
         shell.events.register("post_run_cell", keeper.after_cell)
         installed_in = shell
     return Answer(installed=True)
+
+
+def uninstall():
+    """Take the keeper's hooks back out of the IPython it was installed in."""
+    global installed_in
+    shell = installed_in
+    if shell is None:
+        return
+    display_formatter = shell.display_formatter
+    # a formatter that already met a figure keeps its printer by class, out of reach of a new name
+    display_formatter.mimebundle_formatter.pop("matplotlib.figure.Figure", None)
+    display_formatter.__dict__.pop("format", None)
+    shell.events.unregister("post_run_cell", keeper.after_cell)
+    installed_in = None
 
 
 def arm(cell_id):

@@ -2,7 +2,8 @@
  * cell_dashboard's kernel side: loads figures.py into each Python kernel as soon as the kernel is
  * ready, arms a linked cell just before it runs so the figures it shows get ids, and asks the
  * kernel to draw a figure again at the size of the pane showing it. Loading early puts the helper
- * ahead of any cell in the kernel's queue, and until a cell is armed it does nothing.
+ * ahead of any cell in the kernel's queue, and until a cell is armed it does nothing. A kernel
+ * holding a helper from another version of this file gets this one in its place.
  *
  * Every request is a silent execute, which leaves the execution count and every cell's outputs
  * alone, and the kernel answers through user expressions. Anything missing, whether matplotlib,
@@ -55,9 +56,14 @@ define([
     function loaderCode(source) {
         let loader = [
             'import sys, types',
-            `if ${JSON.stringify(HELPER_MODULE)} not in sys.modules:`,
+            `source = ${JSON.stringify(source)}`,
+            `old = sys.modules.get(${JSON.stringify(HELPER_MODULE)})`,
+            "if getattr(old, 'SOURCE', None) != source:",
+            "    if hasattr(old, 'uninstall'):",
+            '        old.uninstall()',
             `    module = types.ModuleType(${JSON.stringify(HELPER_MODULE)})`,
-            `    exec(compile(${JSON.stringify(source)}, 'figures.py', 'exec'), module.__dict__)`,
+            '    module.SOURCE = source',
+            "    exec(compile(source, 'figures.py', 'exec'), module.__dict__)",
             '    sys.modules[module.__name__] = module',
         ].join('\n');
         return `exec(${JSON.stringify(loader)}, {})`;
