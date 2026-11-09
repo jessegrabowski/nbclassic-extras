@@ -160,7 +160,7 @@ test("a pane being dragged over shows a preview", (t) => {
     t.after(page.close);
     const [first, second] = twoPanes(page);
 
-    dragEvent(page, "dragstart", first.querySelector(".pane_title"));
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", second);
 
     assert.equal(previews(page), 1);
@@ -170,7 +170,7 @@ test("a drop clears a preview left on another pane", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    dragEvent(page, "dragstart", first.querySelector(".pane_title"));
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", first);
     dragEvent(page, "dragover", second);
 
@@ -183,11 +183,10 @@ test("a drag that ends without a drop clears its preview", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    const title = first.querySelector(".pane_title");
-    dragEvent(page, "dragstart", title);
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", second);
 
-    dragEvent(page, "dragend", title);
+    dragEvent(page, "dragend", first);
 
     assert.equal(previews(page), 0);
 });
@@ -196,7 +195,7 @@ test("a drop just after a dragleave still splits along an edge", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    dragEvent(page, "dragstart", first.querySelector(".pane_title"));
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", second);
     dragEvent(page, "dragleave", second);
 
@@ -209,9 +208,8 @@ test("a dragover that arrives after the drag ended shows no preview", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    const title = first.querySelector(".pane_title");
-    dragEvent(page, "dragstart", title);
-    dragEvent(page, "dragend", title);
+    dragEvent(page, "dragstart", first);
+    dragEvent(page, "dragend", first);
 
     dragEvent(page, "dragover", second);
 
@@ -815,4 +813,18 @@ test("stepping back to the latest version lets its plot be drawn again", (t) => 
     assert.equal(page.outputs().querySelector("img").dataset.figure, FIGURE);
     assert.deepEqual(renderRequests(page),
                      [{ type: "render", figure: FIGURE, width: 800, height: 600 }]);
+});
+
+test("a drag that starts on a link inside an output never moves the pane", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    const [first, second] = twoPanes(page);
+    const link = page.document.createElement("a");
+    link.href = "https://example.com";
+    first.querySelector(".pane_outputs").append(link);
+
+    dragEvent(page, "dragstart", link);
+    dragEvent(page, "dragover", second);
+
+    assert.equal(previews(page), 0);
 });

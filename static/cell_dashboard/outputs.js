@@ -20,8 +20,10 @@ window.cellDashboardOutputs = (function () {
         return FIGURE_ID.test(value);
     }
 
+    // an image drags itself by default, and a plot has to move the pane it sits in
     function imageFrom(source) {
         let image = document.createElement('img');
+        image.draggable = false;
         image.src = source;
         return image;
     }

@@ -54,6 +54,7 @@ body {
 
 /* spacing belongs on a pane's children, because padding here would skew its share of a split */
 .pane {
+    cursor: move;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -110,10 +111,9 @@ body {
     padding-bottom: 4px;
 }
 
-/* the title is the handle for moving a pane, so an empty first line must not collapse it */
+/* an empty first line must not collapse the title and shift the header */
 .pane_title {
     color: #777;
-    cursor: move;
     font-family: monospace;
     font-size: 13px;
     font-weight: normal;

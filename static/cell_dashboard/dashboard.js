@@ -379,14 +379,21 @@
         let pane = document.createElement('section');
         pane.className = 'pane';
         pane.dataset.pane = id;
-        let title = document.createElement('h1');
-        title.className = 'pane_title';
-        title.draggable = true;
-        title.addEventListener('dragstart', (event) => {
+        // the whole pane is the handle for moving it, which costs its text being selectable
+        pane.draggable = true;
+        // a link or picture inside HTML output starts a drag of its own, which would carry its
+        // address instead of the pane
+        pane.addEventListener('dragstart', (event) => {
+            if (event.target !== pane) {
+                event.preventDefault();
+                return;
+            }
             draggedPane = id;
             // Firefox starts a drag only if it carries data
             event.dataTransfer.setData(PANE_DRAG_TYPE, id);
         });
+        let title = document.createElement('h1');
+        title.className = 'pane_title';
         let jump = paneButton('[>]', 'jump to this cell in the notebook', () => {
             channel.postMessage({type: 'jump', id});
         });

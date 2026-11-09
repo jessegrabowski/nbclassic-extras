@@ -371,6 +371,28 @@ def test_dropping_a_pane_on_an_edge_splits_that_pane(nbclassic_server, page):
     assert upper["y"] + upper["height"] <= lower["y"]
 
 
+def test_a_pane_drags_from_its_plot(nbclassic_server, page):
+    image = f"from IPython.display import Image; Image(data=b64decode('{RED_PIXEL_PNG}'))"
+    cells = [code(f"from base64 import b64decode\n{image}"), code("print('a1')")]
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    send_cell(page, 1)
+    run_cell(page, 0)
+    expect(dashboard.locator(".pane_outputs img")).to_have_count(1)
+    target = pane_box(dashboard, "a1")
+
+    dashboard.locator(".pane_outputs img").drag_to(
+        dashboard.locator(".pane", has_text="a1"),
+        target_position={"x": target["width"] / 2, "y": target["height"] - 5},
+    )
+
+    upper = pane_box(dashboard, "a1")
+    lower = dashboard.locator(".pane", has=dashboard.locator("img")).bounding_box()
+    assert upper["y"] + upper["height"] <= lower["y"]
+
+
 def test_dragging_a_divider_resizes_its_panes(nbclassic_server, page):
     dashboard = open_with_panes(nbclassic_server, page, 2)
     divider = dashboard.locator(".divider").bounding_box()
