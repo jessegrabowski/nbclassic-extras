@@ -479,13 +479,25 @@ test("a lone plot with a figure id asks to be drawn at its pane size", (t) => {
                      [{ type: "render", figure: FIGURE, width: 800, height: 600 }]);
 });
 
-test("a plot beside other outputs, or without a usable id, asks for nothing", (t) => {
+test("the one plot beside text asks to be drawn at the size it has", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
     t.after(page.close);
     withLayout(page);
-    const stream = { output_type: "stream", name: "stdout", text: "fit\n" };
+    const result = { output_type: "execute_result", data: { "text/plain": "[<Line2D>]" } };
 
-    page.channel.deliver(pane([stream, plot()], { id: "cell-a" }));
+    page.channel.deliver(pane([result, plot()]));
+
+    assert.deepEqual(renderRequests(page),
+                     [{ type: "render", figure: FIGURE, width: 800, height: 600 }]);
+});
+
+test("two plots in a pane, or a plot without a usable id, ask for nothing", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+
+    const second = plot("fedcba9876543210fedcba9876543210");
+    page.channel.deliver(pane([plot(), second], { id: "cell-a" }));
     page.channel.deliver(pane([plot("not-an-id")], { id: "cell-b" }));
 
     assert.deepEqual(renderRequests(page), []);

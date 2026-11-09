@@ -4,11 +4,11 @@
  * local storage for each notebook, and a reopened window puts returning panes back where they
  * were.
  *
- * The kernel can draw a plot alone in its pane again at the pane's size, when the notebook can do
- * that. [r] asks for one redraw and [0] puts back the PNG the cell showed. [oo] makes a pane redraw
- * whenever its size changes, and the choice is kept with the arrangement. A plot that changed since
- * it was shown, or any failure, leaves the PNG the cell showed, and a plot that takes too long to
- * draw is redrawn only on request.
+ * The kernel can draw the only plot in a pane again at the size it has there, when the notebook
+ * can do that. [r] asks for one redraw and [0] puts back the PNG the cell showed. [oo] makes a pane
+ * redraw whenever its size changes, and the choice is kept with the arrangement. A plot that
+ * changed since it was shown, or any failure, leaves the PNG the cell showed, and a plot that takes
+ * too long to draw is redrawn only on request.
  *
  * HTML from a notebook that is not trusted shows as text, because this page has no sanitizer. SVG
  * is safe either way, because an image source runs no scripts. HTML that carries a script shows as
@@ -165,9 +165,10 @@
         };
     }
 
-    // only a plot alone in its pane fills it, so only such a plot is worth drawing again
+    // only the one plot in a pane stretches to the room it has, so only such a plot is worth
+    // drawing again
     function redrawableImages(within) {
-        return [...within.querySelectorAll('.pane_outputs > img:only-child[data-figure]')];
+        return [...within.querySelectorAll('.pane_outputs > img:only-of-type[data-figure]')];
     }
 
     function isRefused(image) {

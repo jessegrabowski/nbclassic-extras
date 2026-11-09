@@ -182,6 +182,11 @@ body {
     width: 100%;
 }
 
+/* the one plot among text takes the room the text leaves, and never less than its own height */
+.pane_outputs > img:only-of-type:not(:only-child) {
+    flex: 1 0 auto;
+}
+
 .pane_outputs pre {
     flex: none;
     font-size: 13px;

@@ -682,6 +682,17 @@ def test_a_linked_plot_is_redrawn_at_its_pane_size(nbclassic_server, page):
     expect(page.locator(".input_prompt").first).to_contain_text("[1]")
 
 
+def test_a_plot_beside_its_cells_result_is_redrawn_in_the_room_left(nbclassic_server, page):
+    dashboard = open_auto_plot_pane(nbclassic_server, page, [code(PLOT.removesuffix(";"))])
+    expect(dashboard.locator(".pane_outputs pre")).to_contain_text("Line2D")
+
+    dashboard.wait_for_function(FITS_ITS_BOX)
+
+    box = dashboard.locator(".pane_outputs > img").bounding_box()
+    assert box["width"] > 900
+    assert box["height"] > 400
+
+
 def test_a_redrawn_plot_follows_the_window_size(nbclassic_server, page):
     dashboard = open_auto_plot_pane(nbclassic_server, page, [code(PLOT)])
     dashboard.wait_for_function(FITS_ITS_BOX)
