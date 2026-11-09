@@ -48,8 +48,10 @@
     const autoKey = `cell_dashboard.auto:${channelName}`;
     let layout = null;
     let draggedPane = null;
-    // by figure id: the figures drawn only on request, and the ones the kernel refused
-    const manualFigures = new Set();
+    // the panes whose plots draw slowly, which are drawn only on request from then on, even after
+    // their cells run again
+    const manualPanes = new Set();
+    // by figure id, the figures the kernel refused
     const failedFigures = new Set();
     // by image, so a pane sent again asks afresh: the size last asked for, and the drawing its
     // cell made, kept while the image shows a redraw
@@ -186,7 +188,8 @@
     function requestRenders(within, {onRequest = false} = {}) {
         for (let image of redrawableImages(within)) {
             let figure = image.dataset.figure;
-            let waitsForRequest = manualFigures.has(figure) || !isAutoPane(image.closest('.pane'));
+            let pane = image.closest('.pane');
+            let waitsForRequest = manualPanes.has(pane.dataset.pane) || !isAutoPane(pane);
             if (isRefused(image) || (waitsForRequest && !onRequest)) {
                 continue;
             }
@@ -205,10 +208,10 @@
         if (!FIGURE_ID.test(figure)) {
             return;
         }
-        if (slow) {
-            manualFigures.add(figure);
-        }
         for (let image of figureImages(figure).filter((image) => requestedSizes.has(image))) {
+            if (slow) {
+                manualPanes.add(image.closest('.pane').dataset.pane);
+            }
             if (!cellDrawings.has(image)) {
                 cellDrawings.set(image, image.src);
             }
@@ -363,8 +366,7 @@
         let auto = pane.querySelector('.pane_auto');
         auto.hidden = live.length === 0;
         auto.setAttribute('aria-pressed', String(isAutoPane(pane)));
-        let slow = live.some((image) => manualFigures.has(image.dataset.figure));
-        let waiting = !isAutoPane(pane) || slow;
+        let waiting = !isAutoPane(pane) || manualPanes.has(pane.dataset.pane);
         pane.querySelector('.pane_redraw').hidden = live.length === 0 || !waiting;
         // a reset only lasts while nothing would draw the plot again on its own
         let resettable = images.some((image) => cellDrawings.has(image)
@@ -385,6 +387,7 @@
 
     function closePane(id) {
         autoPanes.delete(id);
+        manualPanes.delete(id);
         storeAutoPanes();
         panes.delete(id);
         rearrange(without(layout, id));

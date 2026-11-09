@@ -549,6 +549,20 @@ test("a slow drawing stops asking on its own and offers a redraw button", (t) =>
     assert.equal(renderRequests(page).length, 1);
 });
 
+test("a slow plot's pane waits to be asked after its cell runs again", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver(pane([plot()]));
+    page.channel.deliver({ type: "rendered", figure: FIGURE, png: "BBBB", slow: true });
+    page.channel.posted.length = 0;
+
+    page.channel.deliver(pane([plot("fedcba9876543210fedcba9876543210")]));
+
+    assert.deepEqual(renderRequests(page), []);
+    assert.equal(page.document.querySelector(".pane_redraw").hidden, false);
+});
+
 test("a refused plot is never asked for again", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
     t.after(page.close);
