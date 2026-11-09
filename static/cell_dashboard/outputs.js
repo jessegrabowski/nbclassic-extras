@@ -6,6 +6,9 @@
  * is safe either way, because an image source runs no scripts. HTML that carries a script shows as
  * text too, because scripts inserted into a page do not run, so the plot or widget it builds would
  * be missing.
+ *
+ * A renderer whose output takes the pointer itself, such as a plot that zooms on a drag, is wrapped
+ * in interactive(). A press inside such an output goes to the output and never moves the pane.
  */
 window.cellDashboardOutputs = (function () {
     "use strict";
@@ -15,9 +18,22 @@ window.cellDashboardOutputs = (function () {
     const SCRIPT_TAG = /<script\b/i;
     const METADATA_KEY = 'cell_dashboard';
     const FIGURE_ID = /^[0-9a-f]{32}$/;
+    const INTERACTIVE_ATTRIBUTE = 'data-interactive';
 
     function isFigureId(value) {
         return FIGURE_ID.test(value);
+    }
+
+    function interactive(render) {
+        return (value) => {
+            let element = render(value);
+            element.setAttribute(INTERACTIVE_ATTRIBUTE, '');
+            return element;
+        };
+    }
+
+    function isInInteractiveOutput(element) {
+        return element.closest(`[${INTERACTIVE_ATTRIBUTE}]`) !== null;
     }
 
     // an image drags itself by default, and a plot has to move the pane it sits in
@@ -86,6 +102,8 @@ window.cellDashboardOutputs = (function () {
 
     return {
         isFigureId,
+        interactive,
+        isInInteractiveOutput,
         renderOutput,
     };
 })();

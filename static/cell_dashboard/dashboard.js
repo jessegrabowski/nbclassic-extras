@@ -37,7 +37,7 @@
         clampRatio,
         edgeAt,
     } = window.cellDashboardTree;
-    const {isFigureId, renderOutput} = window.cellDashboardOutputs;
+    const {isFigureId, renderOutput, isInInteractiveOutput} = window.cellDashboardOutputs;
     const channelName = new URLSearchParams(window.location.search).get('channel');
     const channel = new BroadcastChannel(channelName);
     const panes = new Map();
@@ -379,8 +379,12 @@
         let pane = document.createElement('section');
         pane.className = 'pane';
         pane.dataset.pane = id;
-        // the whole pane is the handle for moving it, which costs its text being selectable
+        // the whole pane is the handle for moving it, which costs its text being selectable,
+        // except where a press starts inside an output that handles its own dragging
         pane.draggable = true;
+        pane.addEventListener('pointerdown', (event) => {
+            pane.draggable = !isInInteractiveOutput(event.target);
+        });
         // a link or picture inside HTML output starts a drag of its own, which would carry its
         // address instead of the pane
         pane.addEventListener('dragstart', (event) => {

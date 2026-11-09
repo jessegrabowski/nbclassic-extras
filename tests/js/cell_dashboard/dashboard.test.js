@@ -801,6 +801,25 @@ test("an earlier version shows its plot as drawn and asks for no redraw", (t) =>
     assert.deepEqual(renderRequests(page), []);
 });
 
+test("a press inside an interactive output leaves the pane to it until the next press", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([]));
+    const thePane = page.document.querySelector(".pane");
+    const { interactive } = page.document.defaultView.cellDashboardOutputs;
+    const plot = interactive(() => page.document.createElement("div"))(null);
+    page.outputs().append(plot);
+    const press = (target) => {
+        target.dispatchEvent(new page.document.defaultView.Event("pointerdown", { bubbles: true }));
+    };
+
+    press(plot);
+    assert.equal(thePane.draggable, false);
+
+    press(thePane.querySelector(".pane_title"));
+    assert.equal(thePane.draggable, true);
+});
+
 test("stepping back to the latest version lets its plot be drawn again", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
     t.after(page.close);

@@ -2,7 +2,8 @@
 // static/cell_folds/main.js, static/minimap/main.js, or static/cell_dashboard/main.js in a jsdom
 // page with nbclassic's own jQuery and a fake Jupyter whose notebook, config, actions, and dialogs
 // hold state. Tests drive each extension only through what it registers and assert on the
-// resulting DOM and Jupyter state. loadDashboardPage loads the cell_dashboard window's own page.
+// resulting DOM and Jupyter state. loadDashboardPage loads the cell_dashboard window's own page,
+// and loadDashboardOutputs loads only the part of it that builds outputs.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -1178,6 +1179,19 @@ function loadPaneTree() {
     return window.cellDashboardTree;
 }
 
+// outputs.js builds elements, so it needs a document but none of the page
+function loadDashboardOutputs() {
+    const { virtualConsole, closePage } = strictConsole();
+    const dom = new JSDOM("", { runScripts: "outside-only", virtualConsole: virtualConsole });
+    const window = dom.window;
+    window.eval(DASHBOARD_OUTPUTS_JS);
+    return {
+        ...window.cellDashboardOutputs,
+        document: window.document,
+        close: () => closePage(window),
+    };
+}
+
 /**
  * Load the cell_dashboard window's page, listening on the channel named in its address.
  *
@@ -1224,6 +1238,7 @@ module.exports = {
     loadCellDashboard,
     loadCellFolds,
     loadCellIds,
+    loadDashboardOutputs,
     loadDashboardPage,
     loadGistIt,
     loadMinimap,

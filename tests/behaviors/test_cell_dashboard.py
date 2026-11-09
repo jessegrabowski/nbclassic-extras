@@ -393,6 +393,28 @@ def test_a_pane_drags_from_its_plot(nbclassic_server, page):
     assert upper["y"] + upper["height"] <= lower["y"]
 
 
+def test_a_drag_inside_an_interactive_output_leaves_the_panes_alone(nbclassic_server, page):
+    dashboard = open_with_panes(nbclassic_server, page, 2)
+    dashboard.evaluate(
+        """() => {
+            const {interactive} = window.cellDashboardOutputs;
+            const plot = interactive(() => document.createElement('div'))(null);
+            plot.id = 'zoomable';
+            plot.style.height = '200px';
+            document.querySelector('.pane .pane_outputs').append(plot);
+        }"""
+    )
+    target = pane_box(dashboard, "a1")
+
+    dashboard.locator("#zoomable").drag_to(
+        dashboard.locator(".pane", has_text="a1"),
+        target_position={"x": target["width"] / 2, "y": target["height"] - 5},
+    )
+
+    expect(dashboard.locator(".split.row")).to_have_count(1)
+    expect(dashboard.locator(".split.column")).to_have_count(0)
+
+
 def test_dragging_a_divider_resizes_its_panes(nbclassic_server, page):
     dashboard = open_with_panes(nbclassic_server, page, 2)
     divider = dashboard.locator(".divider").bounding_box()

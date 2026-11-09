@@ -203,6 +203,11 @@ body {
     opacity: 0.5;
 }
 
+/* an output that takes the pointer itself shows its own cursors, not the pane's */
+.pane [data-interactive] {
+    cursor: auto;
+}
+
 .pane_outputs {
     display: flex;
     flex: 1;
