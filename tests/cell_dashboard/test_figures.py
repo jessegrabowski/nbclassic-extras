@@ -2,6 +2,8 @@ import ast
 import base64
 from pathlib import Path
 import struct
+import sys
+import types
 
 from jupyter_client.manager import start_new_kernel
 import pytest
@@ -280,6 +282,19 @@ def test_a_changed_helper_replaces_the_one_a_kernel_holds(kernel):
 
     assert kernel.ask(f"{MODULE}.REPLACED") is True
     assert len(figure_ids(run_armed(kernel, PLOT))) == 1
+
+
+@pytest.mark.parametrize(
+    ("ipython", "reason"),
+    [(None, "no IPython"), (types.SimpleNamespace(get_ipython=lambda: None), "no IPython shell")],
+    ids=["no-ipython", "no-shell"],
+)
+def test_a_python_without_an_ipython_shell_gets_no_install(monkeypatch, ipython, reason):
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    module = types.ModuleType("cell_dashboard_figures")
+    exec(compile(HELPER.read_text(), "figures.py", "exec"), module.__dict__)
+
+    assert module.install()._repr_json_() == {"installed": False, "reason": reason}
 
 
 def test_arming_refuses_anything_but_a_cell_id(kernel):

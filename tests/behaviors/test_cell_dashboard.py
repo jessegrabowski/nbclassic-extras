@@ -786,3 +786,4 @@ def test_alt_t_sends_and_runs_a_plot_ready_to_redraw(nbclassic_server, page):
         page.keyboard.press("Alt+t")
 
     expect(popup.value.locator(".pane_redraw")).to_be_visible()
+    expect(page.locator(".input_prompt").first).to_contain_text("[1]")
