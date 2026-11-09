@@ -588,7 +588,8 @@ def test_a_reloaded_notebook_takes_back_its_links(nbclassic_server, page):
         "() => { const notebook = window.Jupyter && Jupyter.notebook;"
         " const kernel = notebook && notebook.kernel;"
         " return !!notebook && notebook._fully_loaded"
-        " && !!kernel && kernel.is_connected() && !!kernel.info_reply; }",
+        " && !!kernel && kernel.is_connected()"
+        " && !!(kernel.info_reply.language_info || {}).name; }",
         timeout=45000,
     )
     expect(page.locator(".cell.cell_dashboard_linked")).to_have_count(1)
@@ -640,3 +641,149 @@ def test_a_deleted_cells_pane_is_marked_until_the_delete_is_undone(nbclassic_ser
     page.evaluate("() => Jupyter.notebook.undelete_cell()")
     expect(gone).to_have_count(0)
     expect(page.locator(".cell.cell_dashboard_linked")).to_have_count(2)
+
+
+# the semicolon keeps the list of lines out of the outputs, so the plot is alone in its pane
+PLOT = (
+    "import matplotlib.pyplot as plt\nfig, ax = plt.subplots(figsize=(4, 3))\nax.plot([1, 2, 3]);"
+)
+
+FITS_ITS_BOX = """() => {
+    const image = document.querySelector('.pane_outputs > img');
+    return !!image && image.complete
+        && Math.abs(image.naturalWidth - image.clientWidth * devicePixelRatio) <= 1
+        && Math.abs(image.naturalHeight - image.clientHeight * devicePixelRatio) <= 1;
+}"""
+
+
+def open_plot_pane(nbclassic_server, page, cells):
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    run_cell(page, 0)
+    dashboard.locator(".pane_outputs > img").wait_for()
+    return dashboard
+
+
+def open_auto_plot_pane(nbclassic_server, page, cells):
+    dashboard = open_plot_pane(nbclassic_server, page, cells)
+    dashboard.locator(".pane_auto").click()
+    return dashboard
+
+
+def test_a_linked_plot_is_redrawn_at_its_pane_size(nbclassic_server, page):
+    dashboard = open_auto_plot_pane(nbclassic_server, page, [code(PLOT)])
+
+    dashboard.wait_for_function(FITS_ITS_BOX)
+
+    width = dashboard.evaluate("() => document.querySelector('.pane_outputs > img').naturalWidth")
+    assert width > 900
+    expect(page.locator(".input_prompt").first).to_contain_text("[1]")
+
+
+def test_a_plot_beside_its_cells_result_is_redrawn_in_the_room_left(nbclassic_server, page):
+    dashboard = open_auto_plot_pane(nbclassic_server, page, [code(PLOT.removesuffix(";"))])
+    expect(dashboard.locator(".pane_outputs pre")).to_contain_text("Line2D")
+
+    dashboard.wait_for_function(FITS_ITS_BOX)
+
+    box = dashboard.locator(".pane_outputs > img").bounding_box()
+    assert box["width"] > 900
+    assert box["height"] > 400
+
+
+def test_a_redrawn_plot_follows_the_window_size(nbclassic_server, page):
+    dashboard = open_auto_plot_pane(nbclassic_server, page, [code(PLOT)])
+    dashboard.wait_for_function(FITS_ITS_BOX)
+
+    dashboard.set_viewport_size({"width": 600, "height": 700})
+
+    dashboard.wait_for_function(
+        f"() => ({FITS_ITS_BOX})()"
+        " && document.querySelector('.pane_outputs > img').naturalWidth < 600"
+    )
+
+
+def test_a_plot_changed_after_it_was_shown_keeps_its_last_drawing(nbclassic_server, page):
+    dashboard = open_auto_plot_pane(
+        nbclassic_server, page, [code(PLOT), code("ax.plot([3, 2, 1]);")]
+    )
+    dashboard.wait_for_function(FITS_ITS_BOX)
+    drawn = dashboard.evaluate("() => document.querySelector('.pane_outputs > img').naturalWidth")
+    run_cell(page, 1)
+    page.locator(".cell").nth(1).locator(".input_prompt").filter(has_text="2").wait_for()
+
+    dashboard.set_viewport_size({"width": 600, "height": 700})
+    expect(dashboard.locator(".pane_reset")).to_be_visible()
+
+    shown = dashboard.evaluate("() => document.querySelector('.pane_outputs > img').naturalWidth")
+    assert shown == drawn
+
+
+def test_a_plot_from_an_unlinked_cell_keeps_no_figure_id(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(PLOT)], wait_for_kernel=True)
+
+    run_cell(page, 0)
+    page.locator(".output_png img").wait_for()
+
+    metadata = page.evaluate("() => Jupyter.notebook.get_cell(0).output_area.toJSON()[0].metadata")
+    assert "cell_dashboard" not in metadata
+
+
+def test_a_cell_tagged_dashboard_no_redraw_keeps_its_drawing(nbclassic_server, page):
+    cell = code(PLOT)
+    cell.metadata["tags"] = ["dashboard-no-redraw"]
+    dashboard = open_plot_pane(nbclassic_server, page, [cell])
+
+    assert dashboard.locator(".pane_outputs > img").get_attribute("data-figure") is None
+
+
+def test_a_new_plot_pane_keeps_its_drawing_until_asked_to_redraw(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(PLOT)], wait_for_kernel=True)
+    page.evaluate("""() => {
+        let kernel = Jupyter.notebook.kernel;
+        let execute = kernel.execute.bind(kernel);
+        window.renders = 0;
+        kernel.execute = (code, callbacks, options) => {
+            window.renders += 'render' in (options?.user_expressions ?? {});
+            return execute(code, callbacks, options);
+        };
+    }""")
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    run_cell(page, 0)
+    dashboard.locator(".pane_outputs > img").wait_for()
+    page.wait_for_function("() => !Jupyter.notebook.kernel_busy")
+
+    dashboard.locator(".pane_redraw").click()
+
+    dashboard.wait_for_function(FITS_ITS_BOX)
+    assert page.evaluate("() => window.renders") == 1
+
+
+def test_reset_puts_back_the_size_the_cell_drew(nbclassic_server, page):
+    dashboard = open_plot_pane(nbclassic_server, page, [code(PLOT)])
+    image = dashboard.locator(".pane_outputs > img")
+    drawn = image.evaluate("(image) => image.naturalWidth")
+    dashboard.locator(".pane_redraw").click()
+    dashboard.wait_for_function(FITS_ITS_BOX)
+
+    dashboard.locator(".pane_reset").click()
+
+    dashboard.wait_for_function(
+        f"() => document.querySelector('.pane_outputs > img').naturalWidth === {drawn}"
+    )
+    expect(dashboard.locator(".pane_reset")).to_be_hidden()
+
+
+def test_alt_t_sends_and_runs_a_plot_ready_to_redraw(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(PLOT)], wait_for_kernel=True)
+    page.evaluate("() => { Jupyter.notebook.select(0); Jupyter.notebook.command_mode(); }")
+
+    with page.expect_popup() as popup:
+        page.keyboard.press("Alt+t")
+
+    expect(popup.value.locator(".pane_redraw")).to_be_visible()
+    expect(page.locator(".input_prompt").first).to_contain_text("[1]")

@@ -20,6 +20,7 @@ const CELL_DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "main.js"), "
 const DASHBOARD_HTML = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.html"), "utf8");
 const DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.js"), "utf8");
 const PANE_TREE_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "tree.js"), "utf8");
+const RENDERS_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "renders.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
 const UNDERSCORE_JS = readStatic("components", "underscore", "underscore-min.js");
@@ -36,9 +37,16 @@ function nbclassicStatic() {
     if (!prefix) {
         throw new Error("CONDA_PREFIX is unset; run the JS tests through `pixi run js-test`");
     }
+    // an environment upgraded in place can keep the folder of its old Python beside the new one
     const lib = path.join(prefix, "lib");
-    const python = fs.readdirSync(lib).find((name) => /^python3\.\d+$/.test(name));
-    return path.join(lib, python, "site-packages", "nbclassic", "static");
+    const statics = fs.readdirSync(lib)
+        .filter((name) => /^python3\.\d+$/.test(name))
+        .map((name) => path.join(lib, name, "site-packages", "nbclassic", "static"));
+    const found = statics.find((candidate) => fs.existsSync(candidate));
+    if (found === undefined) {
+        throw new Error(`nbclassic is not installed under ${lib}`);
+    }
+    return found;
 }
 
 const PAGE = `<!DOCTYPE html><html><head></head><body>
@@ -958,10 +966,21 @@ function fakeBroadcastChannel(window) {
  * Load cell_dashboard into a fresh page holding `cells`, whose selection `select` changes.
  *
  * @param {object} options
- * @param {Array} options.cells - {cellType, source, outputs, trusted} for each cell.
+ * @param {Array} options.cells - {cellType, source, outputs, trusted, tags} for each cell.
  * @param {string} [options.notebookPath] - the notebook's path on the server.
+ * @param {string} [options.kernelLanguage] - the language the notebook's kernel reports, or
+ *     undefined for a kernel that has not answered yet.
+ * @param {string} [options.kernelspecLanguage] - the language of the notebook's kernelspec.
+ * @param {boolean} [options.notebookLoaded] - false holds the notebook's cells back, as nbclassic
+ *     does while it reads the file, until finishNotebookLoad().
  */
-function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
+function loadCellDashboard({
+    cells,
+    notebookPath = "work/fit.ipynb",
+    kernelLanguage = "python",
+    kernelspecLanguage = "python",
+    notebookLoaded = true,
+}) {
     const { window, $, notebook, closePage } = notebookPage([]);
     const channel = fakeBroadcastChannel(window);
     // like a browser, opening a name that is already open returns that window as it is
@@ -982,13 +1001,34 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
         return windows.get(name);
     };
 
-    const made = cells.map((spec, index) => ({
+    // a kernel that keeps every request until a test answers it, and cells that run in it
+    const kernelRequests = [];
+    const ran = [];
+    const kernel = {
+        info_reply: kernelLanguage === undefined ? {} : { language_info: { name: kernelLanguage } },
+        execute(code, callbacks, options) {
+            kernelRequests.push({ code: code, callbacks: callbacks, options: options });
+        },
+    };
+    class CodeCell {
+        execute() {
+            ran.push(this.id);
+        }
+    }
+
+    const made = cells.map((spec, index) => Object.assign(new CodeCell(), {
         id: `cell-${index}`,
+        kernel: kernel,
         element: $('<div class="cell"></div>'),
         cell_type: spec.cellType ?? "code",
+        metadata: { tags: spec.tags ?? [] },
         get_text: () => spec.source ?? "",
         output_area: { trusted: spec.trusted ?? true, toJSON: () => spec.outputs ?? [] },
     }));
+    notebook.kernel = kernel;
+    notebook.kernel_busy = false;
+    notebook.metadata = { kernelspec: { language: kernelspecLanguage } };
+    notebook._fully_loaded = notebookLoaded;
     let selected = 0;
     const scrolledTo = [];
     notebook.notebook_path = notebookPath;
@@ -1025,7 +1065,12 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
         fixOverwrittenChars: (text) => text,
     };
     const fakeRequire = { toUrl: (url) => url };
-    const extension = defineExtension(window, CELL_DASHBOARD_JS)(fakeRequire, jupyter, utils);
+    const codecell = { CodeCell: CodeCell };
+    const renders = defineExtension(window, RENDERS_JS)(jupyter, codecell, "# figures.py");
+    const extension = defineExtension(window, CELL_DASHBOARD_JS)(fakeRequire,
+                                                                 jupyter,
+                                                                 utils,
+                                                                 renders);
     extension.load_jupyter_extension();
     // what the notebook posted while loading, kept apart from what the tests make it post
     const announced = channel.posted.splice(0);
@@ -1034,6 +1079,36 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
         $: $,
         channel: channel,
         announced: announced,
+        kernelRequests: kernelRequests,
+        ran: ran,
+        // answers the kernel request at index with these user expression answers
+        answer(index, answers) {
+            const results = Object.fromEntries(Object.entries(answers).map(([name, value]) => {
+                return [name, value === null
+                    ? { status: "error" }
+                    : { status: "ok", data: { "application/json": value } }];
+            }));
+            kernelRequests[index].callbacks.shell.reply({ content: { user_expressions: results } });
+        },
+        runCell: (index) => made[index].execute(),
+        setKernelBusy(busy) {
+            notebook.kernel_busy = busy;
+            if (!busy) {
+                notebook.events.trigger("kernel_idle.Kernel");
+            }
+        },
+        restartKernel: () => notebook.events.trigger("kernel_ready.Kernel"),
+        // as a kernel does once its info reply arrives, without the ready event the extension
+        // may have missed
+        becomePython() {
+            kernel.info_reply = { language_info: { name: "python" } };
+        },
+        finishNotebookLoad() {
+            notebook._fully_loaded = true;
+            notebook.events.trigger("notebook_loaded.Notebook");
+        },
+        // lets fetches and answered requests finish
+        settle: () => new Promise((resolve) => window.setTimeout(resolve, 0)),
         opened: opened,
         scrolledTo: scrolledTo,
         selectedIndex: () => selected,
@@ -1042,11 +1117,10 @@ function loadCellDashboard({ cells, notebookPath = "work/fit.ipynb" }) {
         },
         // as nbclassic does when a delete is undone: a new cell and element that keep the old id
         rebuildCell(index, source) {
-            made[index] = {
-                ...made[index],
+            made[index] = Object.assign(new CodeCell(), made[index], {
                 element: $('<div class="cell"></div>'),
                 get_text: () => source,
-            };
+            });
         },
         // whether each cell carries the linked marker, as an array of this realm
         linkedMarks: () => Array.from(made, (cell) => {
@@ -1086,8 +1160,9 @@ function loadPaneTree() {
  * @param {object} options
  * @param {string} options.channelName - the channel the notebook gave the window.
  * @param {object} [options.storedLayout] - a layout tree already in local storage for the channel.
+ * @param {Array} [options.autoPanes] - pane ids already stored as redrawn at their size.
  */
-function loadDashboardPage({ channelName, storedLayout = null }) {
+function loadDashboardPage({ channelName, storedLayout = null, autoPanes = null }) {
     const { virtualConsole, closePage } = strictConsole();
     const query = `channel=${encodeURIComponent(channelName)}`;
     const dom = new JSDOM(DASHBOARD_HTML, {
@@ -1098,8 +1173,12 @@ function loadDashboardPage({ channelName, storedLayout = null }) {
     const window = dom.window;
     const channel = fakeBroadcastChannel(window);
     const layoutKey = `cell_dashboard.layout:${channelName}`;
+    const autoKey = `cell_dashboard.auto:${channelName}`;
     if (storedLayout !== null) {
         window.localStorage.setItem(layoutKey, JSON.stringify(storedLayout));
+    }
+    if (autoPanes !== null) {
+        window.localStorage.setItem(autoKey, JSON.stringify(autoPanes));
     }
     window.eval(PANE_TREE_JS);
     window.eval(DASHBOARD_JS);
@@ -1108,6 +1187,7 @@ function loadDashboardPage({ channelName, storedLayout = null }) {
         channel: channel,
         document: window.document,
         storedLayout: () => JSON.parse(window.localStorage.getItem(layoutKey)),
+        storedAutoPanes: () => JSON.parse(window.localStorage.getItem(autoKey)),
         title: () => window.document.querySelector(".pane_title").textContent,
         outputs: () => window.document.querySelector(".pane_outputs"),
         close: () => closePage(window),

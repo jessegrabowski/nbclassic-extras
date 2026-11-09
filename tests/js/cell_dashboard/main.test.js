@@ -51,7 +51,7 @@ test("opening again brings back a window that left the dashboard", (t) => {
     assert.equal(opened.location.href, address);
 });
 
-test("sending gets the only toolbar button and the t key", (t) => {
+test("sending gets the only toolbar button and the t keys", (t) => {
     const dashboard = loadCellDashboard({ cells: [] });
     t.after(dashboard.close);
 
@@ -59,6 +59,8 @@ test("sending gets the only toolbar button and the t key", (t) => {
     assert.deepEqual([...dashboard.commandShortcuts], [
         ["t", "cell_dashboard:send-cell-to-dashboard"],
         ["shift-t", "cell_dashboard:stack-cell-in-dashboard"],
+        ["alt-t", "cell_dashboard:send-cell-to-dashboard-and-run"],
+        ["alt-shift-t", "cell_dashboard:stack-cell-in-dashboard-and-run"],
     ]);
 });
 
@@ -226,6 +228,16 @@ test("the notebook announces itself when it loads", (t) => {
     t.after(dashboard.close);
 
     assert.deepEqual(dashboard.announced, [{ type: "hello" }]);
+});
+
+test("a notebook still reading its file announces itself once its cells are there", (t) => {
+    const dashboard = loadCellDashboard({ cells: [], notebookLoaded: false });
+    t.after(dashboard.close);
+    assert.deepEqual(dashboard.announced, []);
+
+    dashboard.finishNotebookLoad();
+
+    assert.deepEqual(dashboard.channel.posted, [{ type: "hello" }]);
 });
 
 test("a dashboard's panes are linked again, and a pane whose cell is gone gets no index", (t) => {

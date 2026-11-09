@@ -116,6 +116,7 @@ vendor-reveal = "python -I scripts/vendor_reveal.py"
 [tool.pixi.feature.test.dependencies]
 pytest = ">=8"
 nodejs = ">=22.12"
+matplotlib-base = ">=3.8"
 
 [tool.pixi.feature.test.pypi-dependencies]
 playwright = "*"
