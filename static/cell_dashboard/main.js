@@ -210,6 +210,7 @@ define([
             } else if (data.type === 'unlink') {
                 linkedIds.delete(data.id);
                 markLinked(linkedIds);
+                figures.forget(data.id);
             } else if (data.type === 'panes') {
                 relinkPanes(data.ids);
             } else if (data.type === 'jump') {

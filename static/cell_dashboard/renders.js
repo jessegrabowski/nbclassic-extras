@@ -75,7 +75,8 @@ define([
      * @param {function} isLinked - whether a cell id belongs to a linked cell.
      * @param {function} post - sends a message to the dashboard.
      * @returns {object} loadHelper(), which loads figures.py into a Python kernel that lacks it,
-     *     and request(message), which queues a render the dashboard asked for.
+     *     request(message), which queues a render the dashboard asked for, and forget(id), which
+     *     lets the kernel drop the figures of a cell no pane shows.
      */
     function startRenders(isLinked, post) {
         let loader = loaderCode(helperSource);
@@ -150,6 +151,18 @@ define([
             }
         };
 
+        let forget = (id) => {
+            let ask = (isReady) => {
+                if (isReady) {
+                    let forgot = `${HELPER}.forget(${JSON.stringify(id)})`;
+                    askKernel(Jupyter.notebook.kernel, '', {forgot});
+                }
+            };
+            if (installed !== null) {
+                installed.then(ask);
+            }
+        };
+
         let execute = codecell.CodeCell.prototype.execute;
         codecell.CodeCell.prototype.execute = function (...args) {
             if (this.kernel) {
@@ -166,7 +179,7 @@ define([
             loadHelper();
         });
 
-        return {loadHelper, request};
+        return {loadHelper, request, forget};
     }
 
     return {startRenders};

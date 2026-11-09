@@ -215,6 +215,15 @@ def test_a_cell_keeps_only_its_last_few_figures(kernel):
     assert kernel.ask(f"sorted({MODULE}.keeper.figures) == sorted({ids[-8:]!r})") is True
 
 
+def test_a_forgotten_cell_lets_go_of_its_figures(kernel):
+    kernel.load_helper()
+    [figure_id] = figure_ids(run_armed(kernel, PLOT))
+
+    assert kernel.ask(f"{MODULE}.forget({CELL!r})") == {"forgot": CELL}
+
+    assert kernel.ask(f"{MODULE}.render({figure_id!r}, 400, 300)") == {"error": "unknown figure"}
+
+
 def test_a_figure_shown_twice_in_a_run_answers_to_its_latest_id(kernel):
     kernel.load_helper()
     twice = PLOT + "\nfrom IPython.display import display\ndisplay(fig)\ndisplay(fig)"

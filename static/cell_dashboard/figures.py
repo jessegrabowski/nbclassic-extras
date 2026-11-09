@@ -44,13 +44,16 @@ class FigureKeeper:
         self.figures = {}
 
     def arm(self, cell_id):
+        # a run replaces whatever the cell showed before
+        self.forget(cell_id)
+        self.armed_cell = cell_id
+        self.just_shown = []
+
+    def forget(self, cell_id):
         if not isinstance(cell_id, str) or CELL_ID.fullmatch(cell_id) is None:
             raise ValueError(f"not a cell id: {cell_id!r}")
-        # a run replaces whatever the cell showed before
         for figure_id in self.ids_by_cell.pop(cell_id, []):
             self.figures.pop(figure_id, None)
-        self.armed_cell = cell_id
-        self.shown_this_run = []
 
     def format_figure(self, figure, include=None, exclude=None):
         # an error here would put a traceback in the user's cell, beside the figure
@@ -188,6 +191,11 @@ def install():
 def arm(cell_id):
     keeper.arm(cell_id)
     return Answer(armed=cell_id)
+
+
+def forget(cell_id):
+    keeper.forget(cell_id)
+    return Answer(forgot=cell_id)
 
 
 def render(figure_id, width, height):

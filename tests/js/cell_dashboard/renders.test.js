@@ -291,3 +291,12 @@ test("a render cut off by a restart lets the next one through", async (t) => {
 
     assert.match(expressions(dashboard.kernelRequests.at(-1)).render, /, 400, 300\)$/);
 });
+
+test("closing a pane lets the kernel drop its cell's figures", async (t) => {
+    const dashboard = await linkedDashboard(t);
+
+    dashboard.channel.deliver({ type: "unlink", id: "cell-0" });
+    await dashboard.settle();
+
+    assert.match(expressions(dashboard.kernelRequests.at(-1)).forgot, /\.forget\("cell-0"\)$/);
+});
