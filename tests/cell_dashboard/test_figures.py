@@ -160,6 +160,24 @@ def test_a_figure_changed_by_a_later_cell_is_refused(kernel):
     }
 
 
+def test_a_figure_changed_after_its_display_in_the_same_cell_is_refused(kernel):
+    kernel.load_helper()
+    changed_after = (
+        "from matplotlib.figure import Figure\n"
+        "from IPython.display import display\n"
+        "figure = Figure(figsize=(4, 3))\n"
+        "figure.subplots().plot([1, 2, 3])\n"
+        "display(figure)\n"
+        "figure.suptitle('added after the display')"
+    )
+
+    [figure_id] = figure_ids(run_armed(kernel, changed_after))
+
+    assert kernel.ask(f"{MODULE}.render({figure_id!r}, 400, 300)") == {
+        "error": "changed since it was shown"
+    }
+
+
 def test_a_closed_and_deleted_figure_still_renders(kernel):
     kernel.load_helper()
     [figure_id] = figure_ids(run_armed(kernel, PLOT))

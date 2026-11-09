@@ -39,7 +39,7 @@ class FigureKeeper:
 
     def __init__(self):
         self.armed_cell = None
-        self.shown_this_run = []
+        self.just_shown = []
         self.ids_by_cell = {}
         self.figures = {}
 
@@ -73,17 +73,19 @@ class FigureKeeper:
         # a loop that shows many figures keeps only the last few
         while len(cell_ids) > FIGURES_PER_CELL:
             del self.figures[cell_ids.pop(0)]
-        self.shown_this_run.append(figure)
+        self.just_shown.append(figure)
         return {}, {METADATA_KEY: {"figure": figure_id}}
 
     # drawing for display leaves a figure marked stale, so the mark only means a change once the
-    # run is over
+    # display is over
+    def after_display(self):
+        for figure in self.just_shown:
+            figure.stale = False
+        self.just_shown = []
+
     def after_cell(self, result=None):
-        if self.armed_cell is not None:
-            for figure in self.shown_this_run:
-                figure.stale = False
         self.armed_cell = None
-        self.shown_this_run = []
+        self.just_shown = []
 
     def render(self, figure_id, width, height):
         started = time.perf_counter()
@@ -143,6 +145,21 @@ def drawn_at(figure, width, height):
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def settling(display_format):
+    """Wrap a display formatter's format so the figures it just drew read as unchanged."""
+
+    def format_and_settle(obj, include=None, exclude=None):
+        formatted = display_format(obj, include=include, exclude=exclude)
+        # an error here would put a traceback in the user's cell, beside the figure
+        try:
+            keeper.after_display()
+        except Exception:
+            pass
+        return formatted
+
+    return format_and_settle
+
+
 keeper = FigureKeeper()
 installed_in = None
 
@@ -158,8 +175,11 @@ def install():
     if shell is None:
         return Answer(installed=False, reason="no IPython shell")
     if installed_in is not shell:
-        mimebundle = shell.display_formatter.mimebundle_formatter
-        mimebundle.for_type_by_name("matplotlib.figure", "Figure", keeper.format_figure)
+        display_formatter = shell.display_formatter
+        display_formatter.mimebundle_formatter.for_type_by_name("matplotlib.figure",
+                                                                "Figure",
+                                                                keeper.format_figure)
+        display_formatter.format = settling(display_formatter.format)
         shell.events.register("post_run_cell", keeper.after_cell)
         installed_in = shell
     return Answer(installed=True)
