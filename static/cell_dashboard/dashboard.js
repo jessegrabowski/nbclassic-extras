@@ -10,21 +10,18 @@
  * changed since it was shown, or any failure, leaves the PNG the cell showed, and a plot that takes
  * too long to draw is redrawn only on request.
  *
- * HTML from a notebook that is not trusted shows as text, because this page has no sanitizer. SVG
- * is safe either way, because an image source runs no scripts. HTML that carries a script shows as
- * text too, because scripts inserted into a page do not run, so the plot or widget it builds would
- * be missing.
+ * [< n/m >], centered in each pane's header, steps through the outputs of the runs of its cell,
+ * which the notebook keeps. It stays gray until the cell has run twice. An earlier version shows
+ * the PNGs its run drew, since the kernel keeps only the latest run's figures, and the next run
+ * brings the pane back to the latest.
+ *
+ * outputs.js builds what each output shows.
  */
 (function () {
     "use strict";
 
-    // control sequences such as colors and cursor moves, and the hyperlinks some terminals show
-    const ANSI_ESCAPE = /\x1b(?:\[[\d;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
-    const SCRIPT_TAG = /<script\b/i;
     const PANE_DRAG_TYPE = 'application/x-cell-dashboard-pane';
     const DISCONNECTED_CLASS = 'pane_disconnected';
-    const METADATA_KEY = 'cell_dashboard';
-    const FIGURE_ID = /^[0-9a-f]{32}$/;
     const LONGEST_SIDE = 3840;
     const RESIZE_SETTLE_MS = 250;
 
@@ -40,6 +37,7 @@
         clampRatio,
         edgeAt,
     } = window.cellDashboardTree;
+    const {isFigureId, renderOutput, isInInteractiveOutput} = window.cellDashboardOutputs;
     const channelName = new URLSearchParams(window.location.search).get('channel');
     const channel = new BroadcastChannel(channelName);
     const panes = new Map();
@@ -97,65 +95,6 @@
         }
     }
 
-    function imageFrom(source) {
-        let image = document.createElement('img');
-        image.src = source;
-        return image;
-    }
-
-    function preformatted(text) {
-        let pre = document.createElement('pre');
-        pre.textContent = text.replace(ANSI_ESCAPE, '');
-        return pre;
-    }
-
-    function trustedHtml(markup) {
-        let container = document.createElement('div');
-        container.innerHTML = markup;
-        return container;
-    }
-
-    // in nbclassic's order of preference, and the first type an output carries is the one shown
-    const RENDERERS = new Map([
-        ['text/html', trustedHtml],
-        ['image/svg+xml', (svg) => imageFrom(`data:image/svg+xml,${encodeURIComponent(svg)}`)],
-        ['image/png', (data) => imageFrom(`data:image/png;base64,${data}`)],
-        ['image/jpeg', (data) => imageFrom(`data:image/jpeg;base64,${data}`)],
-        ['image/gif', (data) => imageFrom(`data:image/gif;base64,${data}`)],
-        ['text/plain', preformatted],
-    ]);
-
-    function isShowable(mime, value, trusted) {
-        return mime !== 'text/html' || (trusted && !SCRIPT_TAG.test(value));
-    }
-
-    function renderData(data, trusted) {
-        let type = [...RENDERERS.keys()]
-            .find((mime) => mime in data && isShowable(mime, data[mime], trusted));
-        return type === undefined ? [] : [RENDERERS.get(type)(data[type])];
-    }
-
-    function renderOutput(output, trusted) {
-        switch (output.output_type) {
-            case 'stream':
-                return [preformatted(output.text)];
-            case 'error':
-                return [preformatted(output.traceback.join('\n'))];
-            default:
-                return withFigureId(renderData(output.data, trusted), output.metadata);
-        }
-    }
-
-    function withFigureId(elements, metadata) {
-        let figure = metadata?.[METADATA_KEY]?.figure;
-        if (typeof figure === 'string' && FIGURE_ID.test(figure)) {
-            elements.filter((element) => element.tagName === 'IMG').forEach((image) => {
-                image.dataset.figure = figure;
-            });
-        }
-        return elements;
-    }
-
     // in device pixels, so the drawing is sharp, with the longest side kept in bounds
     function pixelSize(image) {
         let ratio = window.devicePixelRatio || 1;
@@ -205,7 +144,7 @@
 
     // a drawing that arrives after a reset was asked for before it, so it is dropped
     function showRender({figure, png, slow}) {
-        if (!FIGURE_ID.test(figure)) {
+        if (!isFigureId(figure)) {
             return;
         }
         for (let image of figureImages(figure).filter((image) => requestedSizes.has(image))) {
@@ -233,7 +172,7 @@
 
     // a refused figure keeps the drawing it shows and can only be reset
     function showRefusal({figure}) {
-        if (!FIGURE_ID.test(figure)) {
+        if (!isFigureId(figure)) {
             return;
         }
         failedFigures.add(figure);
@@ -385,6 +324,39 @@
         requestRenders(pane);
     }
 
+    function showVersions(pane, version, versions) {
+        let controls = pane.querySelector('.pane_versions');
+        controls.classList.toggle('pane_single', versions < 2);
+        controls.classList.toggle('pane_past', version < versions);
+        // the outputs a cell had when it was sent are its one version until it runs
+        let [shown, count] = [Math.max(version, 1), Math.max(versions, 1)];
+        controls.querySelector('.pane_version').textContent = `${shown}/${count}`;
+        controls.querySelector('.pane_older').disabled = version <= 1;
+        controls.querySelector('.pane_newer').disabled = version >= versions;
+        pane.dataset.version = version;
+    }
+
+    function askForVersion(pane, id, step) {
+        channel.postMessage({type: 'version', id, version: Number(pane.dataset.version) + step});
+    }
+
+    function versionControls(pane, id) {
+        let older = paneButton('[<', 'show the outputs of the run before', () => {
+            askForVersion(pane, id, -1);
+        });
+        older.classList.add('pane_older');
+        let newer = paneButton('>]', 'show the outputs of the run after', () => {
+            askForVersion(pane, id, 1);
+        });
+        newer.classList.add('pane_newer');
+        let label = document.createElement('span');
+        label.className = 'pane_version';
+        let controls = document.createElement('span');
+        controls.className = 'pane_versions';
+        controls.append(older, label, newer);
+        return controls;
+    }
+
     function closePane(id) {
         autoPanes.delete(id);
         manualPanes.delete(id);
@@ -407,14 +379,25 @@
         let pane = document.createElement('section');
         pane.className = 'pane';
         pane.dataset.pane = id;
-        let title = document.createElement('h1');
-        title.className = 'pane_title';
-        title.draggable = true;
-        title.addEventListener('dragstart', (event) => {
+        // the whole pane is the handle for moving it, which costs its text being selectable,
+        // except where a press starts inside an output that handles its own dragging
+        pane.draggable = true;
+        pane.addEventListener('pointerdown', (event) => {
+            pane.draggable = !isInInteractiveOutput(event.target);
+        });
+        // a link or picture inside HTML output starts a drag of its own, which would carry its
+        // address instead of the pane
+        pane.addEventListener('dragstart', (event) => {
+            if (event.target !== pane) {
+                event.preventDefault();
+                return;
+            }
             draggedPane = id;
             // Firefox starts a drag only if it carries data
             event.dataTransfer.setData(PANE_DRAG_TYPE, id);
         });
+        let title = document.createElement('h1');
+        title.className = 'pane_title';
         let jump = paneButton('[>]', 'jump to this cell in the notebook', () => {
             channel.postMessage({type: 'jump', id});
         });
@@ -433,7 +416,12 @@
         auto.classList.add('pane_auto');
         let header = document.createElement('header');
         header.className = 'pane_header';
-        header.append(title, redraw, reset, auto, jump, close);
+        // the buttons on the right come and go, so they get a column of their own and leave the
+        // version controls where they are
+        let actions = document.createElement('span');
+        actions.className = 'pane_actions';
+        actions.append(redraw, reset, auto, jump, close);
+        header.append(title, versionControls(pane, id), actions);
         let outputs = document.createElement('div');
         outputs.className = 'pane_outputs';
         pane.append(header, outputs);
@@ -474,15 +462,27 @@
 
     // edge only comes with a send that asks for a side, so a refresh or a reload places panes
     // freely
-    function showPane({id, index, title, outputs, trusted, edge = null}) {
+    function showPane({
+        id,
+        index,
+        title,
+        outputs,
+        trusted,
+        edge = null,
+        version = 0,
+        versions = 0,
+    }) {
         if (!panes.has(id)) {
             addPane(id, edge);
         }
         let pane = panes.get(id);
+        let redrawable = version === versions;
         pane.querySelector('.pane_title').textContent = title;
         showIndex(id, index);
-        paneOutputs(pane)
-            .replaceChildren(...outputs.flatMap((output) => renderOutput(output, trusted)));
+        showVersions(pane, version, versions);
+        paneOutputs(pane).replaceChildren(...outputs.flatMap((output) => {
+            return renderOutput(output, {trusted, redrawable});
+        }));
         showRedrawControls(pane);
         requestRenders(pane);
     }

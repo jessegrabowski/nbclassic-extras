@@ -2,7 +2,8 @@
 // static/cell_folds/main.js, static/minimap/main.js, or static/cell_dashboard/main.js in a jsdom
 // page with nbclassic's own jQuery and a fake Jupyter whose notebook, config, actions, and dialogs
 // hold state. Tests drive each extension only through what it registers and assert on the
-// resulting DOM and Jupyter state. loadDashboardPage loads the cell_dashboard window's own page.
+// resulting DOM and Jupyter state. loadDashboardPage loads the cell_dashboard window's own page,
+// and loadDashboardOutputs loads only the part of it that builds outputs.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -20,6 +21,7 @@ const CELL_DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "main.js"), "
 const DASHBOARD_HTML = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.html"), "utf8");
 const DASHBOARD_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "dashboard.js"), "utf8");
 const PANE_TREE_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "tree.js"), "utf8");
+const DASHBOARD_OUTPUTS_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "outputs.js"), "utf8");
 const RENDERS_JS = fs.readFileSync(path.join(DASHBOARD_DIR, "renders.js"), "utf8");
 const NBCLASSIC_STATIC = nbclassicStatic();
 const JQUERY_JS = readStatic("components", "jquery", "jquery.min.js");
@@ -1014,7 +1016,10 @@ function loadCellDashboard({
         execute() {
             ran.push(this.id);
         }
+
+        _handle_execute_reply() {}
     }
+    let runCount = 0;
 
     const made = cells.map((spec, index) => Object.assign(new CodeCell(), {
         id: `cell-${index}`,
@@ -1070,6 +1075,7 @@ function loadCellDashboard({
     const extension = defineExtension(window, CELL_DASHBOARD_JS)(fakeRequire,
                                                                  jupyter,
                                                                  utils,
+                                                                 codecell,
                                                                  renders);
     extension.load_jupyter_extension();
     // what the notebook posted while loading, kept apart from what the tests make it post
@@ -1138,8 +1144,27 @@ function loadCellDashboard({
             selected = index;
         },
         run: (name) => actions.get(`cell_dashboard:${name}`).handler(),
-        finishRunning(index) {
-            notebook.events.trigger("finished_execute.CodeCell", { cell: made[index] });
+        // as a run ends: the kernel's reply to the request, and the kernel going idle, in either
+        // order. nbclassic fires one idle event per run of a cell started before it finished.
+        finishRunning(index, { status = "ok", replyFirst = true, idles = 1 } = {}) {
+            const cell = made[index];
+            cell.last_msg_id = `run-${runCount++}`;
+            const reply = () => cell._handle_execute_reply({
+                parent_header: { msg_id: cell.last_msg_id },
+                content: { status: status },
+            });
+            const idle = () => {
+                for (let count = 0; count < idles; count++) {
+                    notebook.events.trigger("finished_execute.CodeCell", { cell: cell });
+                }
+            };
+            if (replyFirst) {
+                reply();
+                idle();
+            } else {
+                idle();
+                reply();
+            }
         },
         close: () => closePage(window),
     };
@@ -1152,6 +1177,19 @@ function loadPaneTree() {
     const window = {};
     new Function("window", PANE_TREE_JS)(window);
     return window.cellDashboardTree;
+}
+
+// outputs.js builds elements, so it needs a document but none of the page
+function loadDashboardOutputs() {
+    const { virtualConsole, closePage } = strictConsole();
+    const dom = new JSDOM("", { runScripts: "outside-only", virtualConsole: virtualConsole });
+    const window = dom.window;
+    window.eval(DASHBOARD_OUTPUTS_JS);
+    return {
+        ...window.cellDashboardOutputs,
+        document: window.document,
+        close: () => closePage(window),
+    };
 }
 
 /**
@@ -1181,6 +1219,7 @@ function loadDashboardPage({ channelName, storedLayout = null, autoPanes = null 
         window.localStorage.setItem(autoKey, JSON.stringify(autoPanes));
     }
     window.eval(PANE_TREE_JS);
+    window.eval(DASHBOARD_OUTPUTS_JS);
     window.eval(DASHBOARD_JS);
 
     return {
@@ -1199,6 +1238,7 @@ module.exports = {
     loadCellDashboard,
     loadCellFolds,
     loadCellIds,
+    loadDashboardOutputs,
     loadDashboardPage,
     loadGistIt,
     loadMinimap,

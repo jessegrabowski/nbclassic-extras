@@ -122,6 +122,8 @@ test("sending a code cell posts its first line, outputs, and trust", (t) => {
         title: "print('one')",
         outputs: [STREAM],
         trusted: false,
+        version: 0,
+        versions: 0,
         edge: null,
     }]);
 });
@@ -340,3 +342,134 @@ test("a dashboard that announces itself before any send gets nothing", (t) => {
 
     assert.equal(dashboard.channel.posted.length, 0);
 });
+
+function runWithOutputs(dashboard, spec, outputs) {
+    spec.outputs = outputs;
+    dashboard.finishRunning(0);
+}
+
+test("each run of a linked cell adds a version, and the latest is shown", (t) => {
+    const spec = { source: "print(x)" };
+    const dashboard = loadCellDashboard({ cells: [spec] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+
+    runWithOutputs(dashboard, spec, [STREAM]);
+    runWithOutputs(dashboard, spec, [{ ...STREAM, text: "two\n" }]);
+
+    assert.deepEqual(dashboard.channel.posted.map(({ version, versions }) => [version, versions]),
+                     [[0, 0], [1, 1], [2, 2]]);
+    assert.equal(dashboard.channel.posted[2].outputs[0].text, "two\n");
+});
+
+test("asking for a version sends the outputs of that run", (t) => {
+    const spec = { source: "print(x)" };
+    const dashboard = loadCellDashboard({ cells: [spec] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    runWithOutputs(dashboard, spec, [STREAM]);
+    runWithOutputs(dashboard, spec, [{ ...STREAM, text: "two\n" }]);
+    dashboard.channel.posted.length = 0;
+
+    dashboard.channel.deliver({ type: "version", id: "cell-0", version: 1 });
+    dashboard.channel.deliver({ type: "version", id: "cell-0", version: 3 });
+
+    assert.equal(dashboard.channel.posted.length, 1);
+    assert.deepEqual(dashboard.channel.posted[0].outputs, [STREAM]);
+    assert.equal(dashboard.channel.posted[0].version, 1);
+    assert.equal(dashboard.channel.posted[0].versions, 2);
+});
+
+test("unlinking a cell drops its history", (t) => {
+    const spec = { source: "print(x)" };
+    const dashboard = loadCellDashboard({ cells: [spec] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    runWithOutputs(dashboard, spec, [STREAM]);
+    runWithOutputs(dashboard, spec, [STREAM]);
+
+    dashboard.channel.deliver({ type: "unlink", id: "cell-0" });
+    dashboard.channel.posted.length = 0;
+    dashboard.channel.deliver({ type: "version", id: "cell-0", version: 1 });
+    dashboard.run("send-cell-to-dashboard");
+    runWithOutputs(dashboard, spec, [STREAM]);
+
+    assert.deepEqual(dashboard.channel.posted.map(({ version, versions }) => [version, versions]),
+                     [[0, 0], [1, 1]]);
+});
+
+test("an aborted run adds no version, whether its reply comes before idle or after", (t) => {
+    const spec = { source: "print(x)" };
+    const dashboard = loadCellDashboard({ cells: [spec] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    runWithOutputs(dashboard, spec, [STREAM]);
+    dashboard.channel.posted.length = 0;
+
+    spec.outputs = [];
+    dashboard.finishRunning(0, { status: "aborted" });
+    dashboard.finishRunning(0, { status: "aborted", replyFirst: false });
+    assert.deepEqual(dashboard.channel.posted, []);
+
+    runWithOutputs(dashboard, spec, [STREAM]);
+    assert.deepEqual(dashboard.channel.posted.map(({ versions }) => versions), [2]);
+});
+
+test("an earlier version shows the first line of the source that ran", (t) => {
+    const spec = { source: "print(1)" };
+    const dashboard = loadCellDashboard({ cells: [spec] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    runWithOutputs(dashboard, spec, [STREAM]);
+    spec.source = "print(2)";
+    runWithOutputs(dashboard, spec, [STREAM]);
+    dashboard.channel.posted.length = 0;
+
+    dashboard.channel.deliver({ type: "version", id: "cell-0", version: 1 });
+
+    assert.equal(dashboard.channel.posted[0].title, "print(1)");
+});
+
+test("a reopened dashboard gets the latest version with the full count", (t) => {
+    const spec = { source: "print(x)" };
+    const dashboard = loadCellDashboard({ cells: [spec] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    runWithOutputs(dashboard, spec, [STREAM]);
+    runWithOutputs(dashboard, spec, [STREAM]);
+    dashboard.channel.posted.length = 0;
+
+    dashboard.channel.deliver({ type: "ready" });
+
+    assert.deepEqual(dashboard.channel.posted.map(({ version, versions }) => [version, versions]),
+                     [[2, 2]]);
+});
+
+test("asking for a version of a cell deleted from the notebook sends nothing", (t) => {
+    const spec = { source: "print(x)" };
+    const dashboard = loadCellDashboard({ cells: [spec] });
+    t.after(dashboard.close);
+    dashboard.run("send-cell-to-dashboard");
+    runWithOutputs(dashboard, spec, [STREAM]);
+    runWithOutputs(dashboard, spec, [STREAM]);
+    dashboard.deleteCell(0);
+    dashboard.channel.posted.length = 0;
+
+    dashboard.channel.deliver({ type: "version", id: "cell-0", version: 1 });
+
+    assert.deepEqual(dashboard.channel.posted, []);
+});
+
+for (const replyFirst of [true, false]) {
+    test(`a rerun mid-run adds one version, reply ${replyFirst ? "before" : "after"} idle`, (t) => {
+        const spec = { source: "print(x)" };
+        const dashboard = loadCellDashboard({ cells: [spec] });
+        t.after(dashboard.close);
+        dashboard.run("send-cell-to-dashboard");
+        spec.outputs = [STREAM];
+
+        dashboard.finishRunning(0, { replyFirst: replyFirst, idles: 3 });
+
+        assert.deepEqual(dashboard.channel.posted.map(({ versions }) => versions), [0, 1]);
+    });
+}

@@ -16,13 +16,18 @@
  *
  * renders.js redraws matplotlib figures at the size of their panes, in Python kernels. A cell
  * tagged dashboard-no-redraw keeps the picture it drew, and costs the kernel nothing to hold.
+ *
+ * The notebook keeps the title and outputs of every run of a linked cell, so the window can step
+ * back through earlier versions. A request the kernel aborted, because a cell queued before it
+ * failed, is not a run. Unlinking a cell drops its history.
  */
 define([
     'require',
     'base/js/namespace',
     'base/js/utils',
+    'notebook/js/codecell',
     './renders',
-], function (require, Jupyter, utils, renders) {
+], function (require, Jupyter, utils, codecell, renders) {
     "use strict";
 
     const DASHBOARD_PAGE = 'nbextensions/cell_dashboard/dashboard.html';
@@ -69,14 +74,25 @@ define([
         return index === -1 ? null : index;
     }
 
-    function paneMessage(cell) {
+    function snapshot(cell) {
+        return {
+            title: firstTextLine(cell.get_text()),
+            outputs: cell.output_area.toJSON().map(asDrawn),
+            trusted: cell.output_area.trusted,
+        };
+    }
+
+    // versions count from 1, and the latest shows the cell's own outputs, which is also what a cell
+    // that has not run since it was linked shows, as version 0 of 0
+    function paneMessage(cell, history, version = history.length) {
+        let shown = version === history.length ? snapshot(cell) : history[version - 1];
         return {
             type: 'pane',
             id: cell.id,
             index: cellIndex(cell.id),
-            title: firstTextLine(cell.get_text()),
-            outputs: cell.output_area.toJSON().map(asDrawn),
-            trusted: cell.output_area.trusted,
+            ...shown,
+            version,
+            versions: history.length,
         };
     }
 
@@ -115,6 +131,42 @@ define([
     // inserts, deletes, and moves all add or remove children of the notebook container
     function onCellListChange(callback) {
         new MutationObserver(callback).observe(Jupyter.notebook.container[0], {childList: true});
+    }
+
+    // the kernel goes idle after a request it aborted too, and a request's reply can arrive on
+    // either side of that, so a run counts once both are in
+    function onRunsFinished(callback) {
+        // by cell, the request being waited on, so a deleted cell takes its entry with it. A cell
+        // run again before it finished gets one idle event per run, all for its newest request.
+        let runs = new WeakMap();
+        let runOf = (cell, messageId) => {
+            let run = runs.get(cell);
+            if (run?.messageId !== messageId) {
+                run = {messageId, status: null, isIdle: false, isCounted: false};
+                runs.set(cell, run);
+            }
+            return run;
+        };
+        let settle = (cell) => {
+            let run = runs.get(cell);
+            if (run.status === null || !run.isIdle || run.isCounted) {
+                return;
+            }
+            run.isCounted = true;
+            if (run.status !== 'aborted') {
+                callback(cell);
+            }
+        };
+        let handleReply = codecell.CodeCell.prototype._handle_execute_reply;
+        codecell.CodeCell.prototype._handle_execute_reply = function (message) {
+            runOf(this, message.parent_header.msg_id).status = message.content.status;
+            settle(this);
+            return handleReply.call(this, message);
+        };
+        Jupyter.notebook.events.on('finished_execute.CodeCell', (event, {cell}) => {
+            runOf(cell, cell.last_msg_id).isIdle = true;
+            settle(cell);
+        });
     }
 
     function afterNotebookLoads(callback) {
@@ -165,11 +217,30 @@ define([
         let channelName = `cell_dashboard:${Jupyter.notebook.notebook_path}`;
         let channel = new BroadcastChannel(channelName);
         let linkedIds = new Set();
+        // by cell id, the title and outputs of each run since the cell was linked, oldest first
+        let histories = new Map();
         let dashboard = null;
         let figures = renders.startRenders((id) => linkedIds.has(id),
                                            (message) => channel.postMessage(message));
 
-        let sendCell = (cell, edge = null) => channel.postMessage({...paneMessage(cell), edge});
+        let historyOf = (id) => histories.get(id) ?? [];
+        let sendCell = (cell, edge = null) => {
+            channel.postMessage({...paneMessage(cell, historyOf(cell.id)), edge});
+        };
+        let recordRun = (cell) => {
+            histories.set(cell.id, [...historyOf(cell.id), snapshot(cell)]);
+        };
+        // a pane message carries the cell's place in the notebook, so the pane of a deleted cell
+        // keeps the version it shows
+        let sendVersion = (id, version) => {
+            let index = cellIndex(id);
+            let history = historyOf(id);
+            let isVersion = Number.isInteger(version) && version >= 1 && version <= history.length;
+            if (index !== null && isVersion) {
+                let cell = Jupyter.notebook.get_cell(index);
+                channel.postMessage(paneMessage(cell, history, version));
+            }
+        };
         let sendLinked = (id) => {
             let index = cellIndex(id);
             if (index !== null) {
@@ -209,6 +280,7 @@ define([
                 linkedIds.forEach(sendLinked);
             } else if (data.type === 'unlink') {
                 linkedIds.delete(data.id);
+                histories.delete(data.id);
                 markLinked(linkedIds);
                 figures.forget(data.id);
             } else if (data.type === 'panes') {
@@ -217,6 +289,8 @@ define([
                 jumpToCell(data.id);
             } else if (data.type === 'render') {
                 figures.request(data);
+            } else if (data.type === 'version') {
+                sendVersion(data.id, data.version);
             }
         };
         onCellListChange(() => {
@@ -224,8 +298,9 @@ define([
             let indices = [...linkedIds].map((id) => [id, cellIndex(id)]);
             channel.postMessage({type: 'indices', indices});
         });
-        Jupyter.notebook.events.on('finished_execute.CodeCell', (event, {cell}) => {
+        onRunsFinished((cell) => {
             if (linkedIds.has(cell.id)) {
+                recordRun(cell);
                 sendCell(cell);
             }
         });

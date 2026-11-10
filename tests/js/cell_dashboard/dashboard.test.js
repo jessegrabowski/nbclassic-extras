@@ -160,7 +160,7 @@ test("a pane being dragged over shows a preview", (t) => {
     t.after(page.close);
     const [first, second] = twoPanes(page);
 
-    dragEvent(page, "dragstart", first.querySelector(".pane_title"));
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", second);
 
     assert.equal(previews(page), 1);
@@ -170,7 +170,7 @@ test("a drop clears a preview left on another pane", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    dragEvent(page, "dragstart", first.querySelector(".pane_title"));
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", first);
     dragEvent(page, "dragover", second);
 
@@ -183,11 +183,10 @@ test("a drag that ends without a drop clears its preview", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    const title = first.querySelector(".pane_title");
-    dragEvent(page, "dragstart", title);
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", second);
 
-    dragEvent(page, "dragend", title);
+    dragEvent(page, "dragend", first);
 
     assert.equal(previews(page), 0);
 });
@@ -196,7 +195,7 @@ test("a drop just after a dragleave still splits along an edge", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    dragEvent(page, "dragstart", first.querySelector(".pane_title"));
+    dragEvent(page, "dragstart", first);
     dragEvent(page, "dragover", second);
     dragEvent(page, "dragleave", second);
 
@@ -209,9 +208,8 @@ test("a dragover that arrives after the drag ended shows no preview", (t) => {
     const page = loadDashboardPage({ channelName: CHANNEL });
     t.after(page.close);
     const [first, second] = twoPanes(page);
-    const title = first.querySelector(".pane_title");
-    dragEvent(page, "dragstart", title);
-    dragEvent(page, "dragend", title);
+    dragEvent(page, "dragstart", first);
+    dragEvent(page, "dragend", first);
 
     dragEvent(page, "dragover", second);
 
@@ -734,4 +732,118 @@ test("closing a pane forgets its auto choice", (t) => {
     page.document.querySelector(".pane_button[title^='close']").click();
 
     assert.deepEqual(page.storedAutoPanes(), []);
+});
+
+function versionControls(page) {
+    const controls = page.document.querySelector(".pane_versions");
+    return {
+        controls: controls,
+        label: controls.querySelector(".pane_version").textContent,
+        older: controls.querySelector(".pane_older"),
+        newer: controls.querySelector(".pane_newer"),
+    };
+}
+
+for (const [version, versions] of [[0, 0], [1, 1]]) {
+    test(`a cell at version ${version} of ${versions} shows gray version controls at 1/1`, (t) => {
+        const page = loadDashboardPage({ channelName: CHANNEL });
+        t.after(page.close);
+
+        page.channel.deliver({ ...pane([]), version: version, versions: versions });
+
+        const { controls, label, older, newer } = versionControls(page);
+        assert.equal(controls.classList.contains("pane_single"), true);
+        assert.equal(label, "1/1");
+        assert.equal(older.disabled, true);
+        assert.equal(newer.disabled, true);
+    });
+}
+
+test("a second run makes the version controls usable", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver({ ...pane([]), version: 1, versions: 1 });
+
+    page.channel.deliver({ ...pane([]), version: 2, versions: 2 });
+
+    const { controls, label, older, newer } = versionControls(page);
+    assert.equal(controls.classList.contains("pane_single"), false);
+    assert.equal(label, "2/2");
+    assert.equal(older.disabled, false);
+    assert.equal(newer.disabled, true);
+});
+
+test("stepping back and forth asks the notebook for the neighboring versions", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver({ ...pane([]), version: 2, versions: 3 });
+    page.channel.posted.length = 0;
+
+    versionControls(page).older.click();
+    versionControls(page).newer.click();
+
+    assert.deepEqual(page.channel.posted, [
+        { type: "version", id: "cell-a", version: 1 },
+        { type: "version", id: "cell-a", version: 3 },
+    ]);
+});
+
+test("an earlier version shows its plot as drawn and asks for no redraw", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+
+    page.channel.deliver({ ...pane([plot()]), version: 1, versions: 2 });
+
+    assert.equal(versionControls(page).controls.classList.contains("pane_past"), true);
+    assert.equal(page.outputs().querySelector("img").getAttribute("src"),
+                 "data:image/png;base64,AAAA");
+    assert.deepEqual(renderRequests(page), []);
+});
+
+test("a press inside an interactive output leaves the pane to it until the next press", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([]));
+    const thePane = page.document.querySelector(".pane");
+    const { interactive } = page.document.defaultView.cellDashboardOutputs;
+    const plot = interactive(() => page.document.createElement("div"))(null);
+    page.outputs().append(plot);
+    const press = (target) => {
+        target.dispatchEvent(new page.document.defaultView.Event("pointerdown", { bubbles: true }));
+    };
+
+    press(plot);
+    assert.equal(thePane.draggable, false);
+
+    press(thePane.querySelector(".pane_title"));
+    assert.equal(thePane.draggable, true);
+});
+
+test("stepping back to the latest version lets its plot be drawn again", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL, autoPanes: AUTO });
+    t.after(page.close);
+    withLayout(page);
+    page.channel.deliver({ ...pane([plot()]), version: 1, versions: 2 });
+
+    page.channel.deliver({ ...pane([plot()]), version: 2, versions: 2 });
+
+    assert.equal(versionControls(page).controls.classList.contains("pane_past"), false);
+    assert.equal(page.outputs().querySelector("img").dataset.figure, FIGURE);
+    assert.deepEqual(renderRequests(page),
+                     [{ type: "render", figure: FIGURE, width: 800, height: 600 }]);
+});
+
+test("a drag that starts on a link inside an output never moves the pane", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    const [first, second] = twoPanes(page);
+    const link = page.document.createElement("a");
+    link.href = "https://example.com";
+    first.querySelector(".pane_outputs").append(link);
+
+    dragEvent(page, "dragstart", link);
+    dragEvent(page, "dragover", second);
+
+    assert.equal(previews(page), 0);
 });

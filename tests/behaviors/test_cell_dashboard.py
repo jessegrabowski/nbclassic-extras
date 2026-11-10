@@ -277,6 +277,60 @@ def test_a_third_pane_stacks_beside_a_half_window_pane(nbclassic_server, page):
     assert left["height"] > upper["height"] * 1.9
 
 
+def test_a_second_run_lets_the_pane_step_back_to_the_first(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code("print('one')")], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    button(page, "send-cell-to-dashboard").click()
+    run_cell(page, 0)
+    expect(dashboard.locator(".pane_outputs pre")).to_have_text("one\n")
+    expect(dashboard.locator(".pane_version")).to_have_text("1/1")
+
+    page.evaluate("() => Jupyter.notebook.get_cell(0).set_text(\"print('two')\")")
+    run_cell(page, 0)
+    expect(dashboard.locator(".pane_version")).to_have_text("2/2")
+    dashboard.locator(".pane_older").click()
+
+    expect(dashboard.locator(".pane_outputs pre")).to_have_text("one\n")
+    expect(dashboard.locator(".pane_version")).to_have_text("1/2")
+
+
+def test_a_run_aborted_by_an_upstream_error_adds_no_version(nbclassic_server, page):
+    cells = [code("import time; time.sleep(1); raise ValueError('upstream')"), code("print('one')")]
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    send_cell(page, 1)
+    run_cell(page, 0)
+    run_cell(page, 1)
+
+    page.wait_for_function(
+        "() => Jupyter.notebook.get_cell(0).output_area.outputs.length > 0"
+        " && !Jupyter.notebook.kernel_busy"
+    )
+    run_cell(page, 1)
+
+    expect(dashboard.locator(".pane_outputs pre")).to_have_text("one\n")
+    expect(dashboard.locator(".pane_version")).to_have_text("1/1")
+
+
+def test_the_version_control_sits_in_the_middle_of_the_header(nbclassic_server, page):
+    dashboard = open_with_panes(nbclassic_server, page, 1)
+
+    header = dashboard.locator(".pane_header").bounding_box()
+    versions = dashboard.locator(".pane_versions").bounding_box()
+    assert versions["x"] + versions["width"] / 2 == pytest.approx(
+        header["x"] + header["width"] / 2, abs=1
+    )
+
+
+def test_the_version_control_stays_clear_of_the_buttons_in_a_narrow_pane(nbclassic_server, page):
+    dashboard = open_with_panes(nbclassic_server, page, 1)
+    dashboard.set_viewport_size({"width": 220, "height": 400})
+
+    versions = dashboard.locator(".pane_versions").bounding_box()
+    actions = dashboard.locator(".pane_actions").bounding_box()
+    assert versions["x"] + versions["width"] <= actions["x"]
+
+
 def test_each_linked_cell_refreshes_its_own_pane(nbclassic_server, page):
     cells = [code("print('first')"), code("print('second')")]
     nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
@@ -315,6 +369,50 @@ def test_dropping_a_pane_on_an_edge_splits_that_pane(nbclassic_server, page):
     lower = pane_box(dashboard, "a0")
     assert upper["x"] == lower["x"]
     assert upper["y"] + upper["height"] <= lower["y"]
+
+
+def test_a_pane_drags_from_its_plot(nbclassic_server, page):
+    image = f"from IPython.display import Image; Image(data=b64decode('{RED_PIXEL_PNG}'))"
+    cells = [code(f"from base64 import b64decode\n{image}"), code("print('a1')")]
+    nbclassic_server.open_notebook(page, cells, wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    send_cell(page, 1)
+    run_cell(page, 0)
+    expect(dashboard.locator(".pane_outputs img")).to_have_count(1)
+    target = pane_box(dashboard, "a1")
+
+    dashboard.locator(".pane_outputs img").drag_to(
+        dashboard.locator(".pane", has_text="a1"),
+        target_position={"x": target["width"] / 2, "y": target["height"] - 5},
+    )
+
+    upper = pane_box(dashboard, "a1")
+    lower = dashboard.locator(".pane", has=dashboard.locator("img")).bounding_box()
+    assert upper["y"] + upper["height"] <= lower["y"]
+
+
+def test_a_drag_inside_an_interactive_output_leaves_the_panes_alone(nbclassic_server, page):
+    dashboard = open_with_panes(nbclassic_server, page, 2)
+    dashboard.evaluate(
+        """() => {
+            const {interactive} = window.cellDashboardOutputs;
+            const plot = interactive(() => document.createElement('div'))(null);
+            plot.id = 'zoomable';
+            plot.style.height = '200px';
+            document.querySelector('.pane .pane_outputs').append(plot);
+        }"""
+    )
+    target = pane_box(dashboard, "a1")
+
+    dashboard.locator("#zoomable").drag_to(
+        dashboard.locator(".pane", has_text="a1"),
+        target_position={"x": target["width"] / 2, "y": target["height"] - 5},
+    )
+
+    expect(dashboard.locator(".split.row")).to_have_count(1)
+    expect(dashboard.locator(".split.column")).to_have_count(0)
 
 
 def test_dragging_a_divider_resizes_its_panes(nbclassic_server, page):
