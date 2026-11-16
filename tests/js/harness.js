@@ -1218,13 +1218,35 @@ function loadDashboardPage({ channelName, storedLayout = null, autoPanes = null 
     if (autoPanes !== null) {
         window.localStorage.setItem(autoKey, JSON.stringify(autoPanes));
     }
+    // jsdom has no ResizeObserver. This one reports an element's resize when a test asks.
+    const observers = [];
+    window.ResizeObserver = class {
+        constructor(callback) {
+            this.callback = callback;
+            this.observed = new Set();
+            observers.push(this);
+        }
+
+        observe(element) {
+            this.observed.add(element);
+        }
+
+        unobserve(element) {
+            this.observed.delete(element);
+        }
+    };
     window.eval(PANE_TREE_JS);
     window.eval(DASHBOARD_OUTPUTS_JS);
     window.eval(DASHBOARD_JS);
 
     return {
         channel: channel,
+        window: window,
         document: window.document,
+        resize(element) {
+            observers.filter((observer) => observer.observed.has(element))
+                .forEach((observer) => observer.callback([{ target: element }]));
+        },
         storedLayout: () => JSON.parse(window.localStorage.getItem(layoutKey)),
         storedAutoPanes: () => JSON.parse(window.localStorage.getItem(autoKey)),
         title: () => window.document.querySelector(".pane_title").textContent,
