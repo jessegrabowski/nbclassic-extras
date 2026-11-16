@@ -7,6 +7,10 @@
  * text too, because scripts inserted into a page do not run, so the plot or widget it builds would
  * be missing.
  *
+ * A Plotly figure comes out as an empty box holding its spec, which the page draws into once it has
+ * plotly.js. The spec is data, so it draws trusted or not. A page that cannot get plotly.js shows
+ * the image the output carries beside the spec, if it has one.
+ *
  * A renderer whose output takes the pointer itself, such as a plot that zooms on a drag, is wrapped
  * in interactive(). A press inside such an output goes to the output and never moves the pane.
  */
@@ -19,14 +23,19 @@ window.cellDashboardOutputs = (function () {
     const METADATA_KEY = 'cell_dashboard';
     const FIGURE_ID = /^[0-9a-f]{32}$/;
     const INTERACTIVE_ATTRIBUTE = 'data-interactive';
+    const PLOTLY_MIME = 'application/vnd.plotly.v1+json';
+    const PLOTLY_CLASS = 'pane_plotly';
+    const IMAGE_TYPES = ['image/svg+xml', 'image/png', 'image/jpeg', 'image/gif'];
+    // by box, a Plotly figure's spec and the data of the output it came in
+    const plotlyOutputs = new WeakMap();
 
     function isFigureId(value) {
         return FIGURE_ID.test(value);
     }
 
     function interactive(render) {
-        return (value) => {
-            let element = render(value);
+        return (...values) => {
+            let element = render(...values);
             element.setAttribute(INTERACTIVE_ATTRIBUTE, '');
             return element;
         };
@@ -56,8 +65,29 @@ window.cellDashboardOutputs = (function () {
         return container;
     }
 
-    // in nbclassic's order of preference, and the first type an output carries is the one shown
+    function plotlyBox(figure, data) {
+        let box = document.createElement('div');
+        box.className = PLOTLY_CLASS;
+        box.textContent = 'Plotly figure, waiting for plotly.js from the kernel';
+        plotlyOutputs.set(box, {figure, data});
+        return box;
+    }
+
+    function plotlyFigureOf(box) {
+        return plotlyOutputs.get(box).figure;
+    }
+
+    // the image beside a Plotly figure's spec, or null when its output carries none
+    function plotlyStillOf(box) {
+        let {data} = plotlyOutputs.get(box);
+        let type = IMAGE_TYPES.find((mime) => mime in data);
+        return type === undefined ? null : RENDERERS.get(type)(data[type]);
+    }
+
+    // in nbclassic's order of preference, and the first type an output carries is the one shown.
+    // Plotly's spec comes first, since the HTML beside it needs scripts.
     const RENDERERS = new Map([
+        [PLOTLY_MIME, interactive(plotlyBox)],
         ['text/html', trustedHtml],
         ['image/svg+xml', (svg) => imageFrom(`data:image/svg+xml,${encodeURIComponent(svg)}`)],
         ['image/png', (data) => imageFrom(`data:image/png;base64,${data}`)],
@@ -73,7 +103,7 @@ window.cellDashboardOutputs = (function () {
     function renderData(data, trusted) {
         let type = [...RENDERERS.keys()]
             .find((mime) => mime in data && isShowable(mime, data[mime], trusted));
-        return type === undefined ? [] : [RENDERERS.get(type)(data[type])];
+        return type === undefined ? [] : [RENDERERS.get(type)(data[type], data)];
     }
 
     function withFigureId(elements, metadata) {
@@ -104,6 +134,8 @@ window.cellDashboardOutputs = (function () {
         isFigureId,
         interactive,
         isInInteractiveOutput,
+        plotlyFigureOf,
+        plotlyStillOf,
         renderOutput,
     };
 })();

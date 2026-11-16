@@ -139,6 +139,189 @@ test("an output with no type the page can show is left out", (t) => {
     assert.equal(page.outputs().children.length, 1);
 });
 
+const PLOTLY_MIME = "application/vnd.plotly.v1+json";
+const PLOTLY_FIGURE = {
+    data: [{ type: "scatter", x: [1, 2], y: [2, 1] }],
+    layout: { width: 700, height: 500, title: { text: "fit" } },
+    config: { displaylogo: false },
+};
+
+// stands in for the plotly.js the notebook sends, which a jsdom page does not run
+function stubPlotly(page) {
+    const drawn = [];
+    const resized = [];
+    page.window.Plotly = {
+        newPlot(plot, data, layout, config) {
+            plot.classList.add("js-plotly-plot");
+            drawn.push(JSON.parse(JSON.stringify({ data: data, layout: layout, config: config })));
+        },
+        Plots: { resize: (plot) => resized.push(plot) },
+    };
+    return { drawn: drawn, resized: resized };
+}
+
+function plotlyAsks(page) {
+    return page.channel.posted.filter(({ type }) => type === "need_plotly").length;
+}
+
+test("a Plotly figure waits for plotly.js, which the notebook is asked for once", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })]));
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })], { id: "cell-b" }));
+
+    assert.equal(plotlyAsks(page), 1);
+    assert.equal(page.document.querySelectorAll(".pane_plotly").length, 2);
+});
+
+test("plotly.js from the notebook draws the waiting figures to fit their panes", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })]));
+    const plotly = stubPlotly(page);
+
+    page.channel.deliver({ type: "plotly", script: "// plotly.js" });
+
+    assert.equal(page.document.head.querySelector("script").textContent, "// plotly.js");
+    assert.deepEqual(plotly.drawn, [{
+        data: PLOTLY_FIGURE.data,
+        layout: { title: { text: "fit" }, autosize: true },
+        config: PLOTLY_FIGURE.config,
+    }]);
+});
+
+test("a Plotly figure draws in place of its HTML, trusted or not, once plotly.js is here", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    const plotly = stubPlotly(page);
+    const data = { [PLOTLY_MIME]: PLOTLY_FIGURE, "text/html": "<div>plot</div>" };
+
+    page.channel.deliver(pane([display(data)], { trusted: false }));
+
+    assert.equal(plotly.drawn.length, 1);
+    assert.equal(plotlyAsks(page), 0);
+});
+
+test("a notebook without plotly.js says so in the figure, and the next one asks again", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })]));
+
+    page.channel.deliver({ type: "plotly", script: null });
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })], { id: "cell-b" }));
+
+    assert.equal(page.document.head.querySelector("script"), null);
+    assert.match(page.outputs().textContent, /the kernel has no plotly\.js/);
+    assert.equal(plotlyAsks(page), 2);
+});
+
+test("a notebook without plotly.js leaves the figure to the image beside its spec", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    const data = { [PLOTLY_MIME]: PLOTLY_FIGURE, "image/png": "iVBORw0K" };
+    page.channel.deliver(pane([display(data)]));
+
+    page.channel.deliver({ type: "plotly", script: null });
+
+    assert.equal(page.outputs().querySelector(".pane_plotly"), null);
+    assert.equal(page.outputs().querySelector("img").src, "data:image/png;base64,iVBORw0K");
+});
+
+test("a notebook that says hello is asked for plotly.js, though an earlier one was", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })]));
+
+    page.channel.deliver({ type: "hello" });
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })], { id: "cell-b" }));
+
+    assert.equal(plotlyAsks(page), 2);
+});
+
+test("a Plotly figure that plotly.js cannot draw says so and leaves the next one to draw", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: { data: "broken" } })]));
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })], { id: "cell-b" }));
+    const plotly = stubPlotly(page);
+    const newPlot = page.window.Plotly.newPlot;
+    page.window.Plotly.newPlot = (plot, data, layout, config) => {
+        if (!Array.isArray(data)) {
+            throw new Error("data must be an array");
+        }
+        newPlot(plot, data, layout, config);
+    };
+
+    page.channel.deliver({ type: "plotly", script: "// plotly.js" });
+
+    assert.match(page.document.querySelector(".pane_plotly").textContent, /could not draw/);
+    assert.equal(plotly.drawn.length, 1);
+});
+
+test("a Plotly spec that is null says so and leaves the next figure to draw", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: null })]));
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })], { id: "cell-b" }));
+    const plotly = stubPlotly(page);
+
+    page.channel.deliver({ type: "plotly", script: "// plotly.js" });
+
+    assert.match(page.document.querySelector(".pane_plotly").textContent, /could not draw/);
+    assert.equal(plotly.drawn.length, 1);
+});
+
+test("a Plotly figure whose drawing fails later says plotly.js could not draw it", async (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })]));
+    stubPlotly(page);
+    page.window.Plotly.newPlot = () => Promise.reject(new Error("bad trace"));
+
+    page.channel.deliver({ type: "plotly", script: "// plotly.js" });
+    await new Promise(setImmediate);
+
+    assert.match(page.document.querySelector(".pane_plotly").textContent, /could not draw/);
+});
+
+test("trusted HTML that borrows Plotly's class names is never drawn into", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    const plotly = stubPlotly(page);
+    const html = '<div class="pane_plotly"></div><div class="pane_plotly js-plotly-plot"></div>';
+
+    page.channel.deliver(pane([display({ "text/html": html })]));
+    page.resize(page.outputs());
+
+    assert.deepEqual(plotly.drawn, []);
+    assert.deepEqual(plotly.resized, []);
+});
+
+test("a press inside a Plotly figure goes to the figure and never moves the pane", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    stubPlotly(page);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })]));
+    const drawing = page.document.createElement("svg");
+    page.outputs().querySelector(".pane_plotly").append(drawing);
+
+    drawing.dispatchEvent(new page.window.Event("pointerdown", { bubbles: true }));
+
+    assert.equal(page.document.querySelector(".pane").draggable, false);
+});
+
+test("a pane that changes size resizes the Plotly figures in it", (t) => {
+    const page = loadDashboardPage({ channelName: CHANNEL });
+    t.after(page.close);
+    const plotly = stubPlotly(page);
+    page.channel.deliver(pane([display({ [PLOTLY_MIME]: PLOTLY_FIGURE })]));
+
+    page.resize(page.outputs());
+
+    assert.deepEqual(plotly.resized, [page.outputs().querySelector(".pane_plotly")]);
+});
+
 function dragEvent(page, type, target) {
     const event = new page.document.defaultView.Event(type, { bubbles: true, cancelable: true });
     event.dataTransfer = { setData() {} };

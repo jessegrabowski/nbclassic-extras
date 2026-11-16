@@ -236,6 +236,21 @@ body {
     flex: 1 0 auto;
 }
 
+/* a Plotly figure draws to the size of its box: the whole pane when alone, and Plotly's own height
+   among other outputs */
+.pane_outputs > .pane_plotly {
+    color: #777;
+    flex: none;
+    font-size: 13px;
+    height: 450px;
+}
+
+.pane_outputs > .pane_plotly:only-child {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+}
+
 .pane_outputs pre {
     flex: none;
     font-size: 13px;

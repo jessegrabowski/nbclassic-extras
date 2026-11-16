@@ -15,7 +15,9 @@
  * the PNGs its run drew, since the kernel keeps only the latest run's figures, and the next run
  * brings the pane back to the latest.
  *
- * outputs.js builds what each output shows.
+ * outputs.js builds what each output shows. A Plotly figure draws into its box once the page has
+ * plotly.js, which the notebook reads from the kernel's plotly when the first figure arrives, and
+ * it follows its pane's size.
  */
 (function () {
     "use strict";
@@ -37,7 +39,13 @@
         clampRatio,
         edgeAt,
     } = window.cellDashboardTree;
-    const {isFigureId, renderOutput, isInInteractiveOutput} = window.cellDashboardOutputs;
+    const {
+        isFigureId,
+        renderOutput,
+        isInInteractiveOutput,
+        plotlyFigureOf,
+        plotlyStillOf,
+    } = window.cellDashboardOutputs;
     const channelName = new URLSearchParams(window.location.search).get('channel');
     const channel = new BroadcastChannel(channelName);
     const panes = new Map();
@@ -61,6 +69,18 @@
     // the arrangement to rebuild as panes return, until a pane outside it arrives or the user
     // rearranges
     let savedLayout = storedLayout();
+    // whether the notebook was asked for plotly.js, and whether it came. A script that came is
+    // never asked for again, even if it failed.
+    let askedForPlotly = false;
+    let hasPlotlyScript = false;
+    // a divider drag resizes panes without resizing the window. A figure the pane dropped since
+    // refuses the resize, which leaves nothing to do.
+    const paneResizes = new ResizeObserver((entries) => entries.forEach(({target}) => {
+        let plots = target.querySelectorAll(':scope > .pane_plotly.js-plotly-plot');
+        plots.forEach((plot) => {
+            Promise.resolve(window.Plotly.Plots.resize(plot)).catch(() => {});
+        });
+    }));
 
     function storedLayout() {
         try {
@@ -110,6 +130,77 @@
     // drawing again
     function redrawableImages(within) {
         return [...within.querySelectorAll('.pane_outputs > img:only-of-type[data-figure]')];
+    }
+
+    function askForPlotly() {
+        if (!askedForPlotly && !hasPlotlyScript) {
+            askedForPlotly = true;
+            channel.postMessage({type: 'need_plotly'});
+        }
+    }
+
+    // Plotly marks every box it draws into
+    function waitingPlotlyFigures(within) {
+        return [...within.querySelectorAll('.pane_outputs > .pane_plotly:not(.js-plotly-plot)')];
+    }
+
+    function drawPlotlyFigures(within) {
+        let waiting = waitingPlotlyFigures(within);
+        if (waiting.length === 0) {
+            return;
+        }
+        if (window.Plotly === undefined) {
+            askForPlotly();
+            return;
+        }
+        waiting.forEach(drawPlotlyFigure);
+    }
+
+    // a figure Plotly cannot draw says so, and leaves the others to draw
+    function drawPlotlyFigure(box) {
+        let showFailure = () => {
+            box.textContent = 'Plotly figure, which plotly.js could not draw';
+        };
+        box.replaceChildren();
+        try {
+            let {data, layout, config} = plotlyFigureOf(box);
+            let {width, height, ...fitted} = layout ?? {};
+            let drawn = window.Plotly.newPlot(box,
+                                              data ?? [],
+                                              {...fitted, autosize: true},
+                                              config ?? {});
+            Promise.resolve(drawn).catch(showFailure);
+        } catch {
+            showFailure();
+        }
+    }
+
+    // a figure with an image beside its spec shows the image, and the next figure asks again
+    function showPlotlyStills() {
+        waitingPlotlyFigures(root).forEach((box) => {
+            let still = plotlyStillOf(box);
+            if (still === null) {
+                box.textContent = 'Plotly figure, which the kernel has no plotly.js to draw';
+            } else {
+                box.replaceWith(still);
+            }
+        });
+    }
+
+    function loadPlotly({script}) {
+        askedForPlotly = false;
+        if (typeof script !== 'string') {
+            showPlotlyStills();
+            return;
+        }
+        if (hasPlotlyScript) {
+            return;
+        }
+        hasPlotlyScript = true;
+        let element = document.createElement('script');
+        element.textContent = script;
+        document.head.append(element);
+        drawPlotlyFigures(root);
     }
 
     function isRefused(image) {
@@ -358,6 +449,7 @@
     }
 
     function closePane(id) {
+        paneResizes.unobserve(paneOutputs(panes.get(id)));
         autoPanes.delete(id);
         manualPanes.delete(id);
         storeAutoPanes();
@@ -425,6 +517,7 @@
         let outputs = document.createElement('div');
         outputs.className = 'pane_outputs';
         pane.append(header, outputs);
+        paneResizes.observe(outputs);
         acceptPaneDrops(pane, id);
         return pane;
     }
@@ -483,6 +576,7 @@
         paneOutputs(pane).replaceChildren(...outputs.flatMap((output) => {
             return renderOutput(output, {trusted, redrawable});
         }));
+        drawPlotlyFigures(pane);
         showRedrawControls(pane);
         requestRenders(pane);
     }
@@ -502,11 +596,15 @@
         } else if (data.type === 'indices') {
             data.indices.forEach(([id, index]) => showIndex(id, index));
         } else if (data.type === 'hello') {
+            // a notebook that just arrived never saw an earlier ask
+            askedForPlotly = false;
             channel.postMessage({type: 'panes', ids: [...panes.keys()]});
         } else if (data.type === 'rendered') {
             showRender(data);
         } else if (data.type === 'render_failed') {
             showRefusal(data);
+        } else if (data.type === 'plotly') {
+            loadPlotly(data);
         }
     };
     redrawAfterResizing();

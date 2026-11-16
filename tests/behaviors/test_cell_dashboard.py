@@ -885,3 +885,77 @@ def test_alt_t_sends_and_runs_a_plot_ready_to_redraw(nbclassic_server, page):
 
     expect(popup.value.locator(".pane_redraw")).to_be_visible()
     expect(page.locator(".input_prompt").first).to_contain_text("[1]")
+
+
+PLOTLY_FIGURE = (
+    "import plotly.graph_objects as go\n"
+    "go.Figure(go.Scatter(x=[1, 2, 3], y=[3, 1, 2]), layout={'width': 400, 'height': 300})"
+)
+
+
+def test_a_plotly_figure_draws_to_fill_its_pane_and_follows_its_size(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(PLOTLY_FIGURE)], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    run_cell(page, 0)
+    figure = dashboard.locator(".pane_plotly .main-svg").first
+    figure.wait_for()
+
+    assert figure.bounding_box()["width"] > 900
+    assert figure.bounding_box()["height"] > 450
+
+    dashboard.set_viewport_size({"width": 600, "height": 600})
+
+    dashboard.wait_for_function(
+        "() => document.querySelector('.pane_plotly .main-svg').getBoundingClientRect().width < 600"
+    )
+
+
+def test_a_drag_inside_a_plotly_figure_zooms_it_and_leaves_the_panes_alone(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(PLOTLY_FIGURE), code("a1")], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    send_cell(page, 1)
+    run_cell(page, 0)
+    drag_area = dashboard.locator(".pane_plotly .nsewdrag").first
+    drag_area.wait_for()
+    box = drag_area.bounding_box()
+    other = pane_box(dashboard, "a1")
+    x_range = "() => document.querySelector('.pane_plotly')._fullLayout.xaxis.range.join()"
+    before = dashboard.evaluate(x_range)
+
+    # ends over the other pane's bottom edge, where a pane drag would stack the two
+    dashboard.mouse.move(box["x"] + box["width"] * 0.2, box["y"] + box["height"] * 0.5)
+    dashboard.mouse.down()
+    dashboard.mouse.move(
+        other["x"] + other["width"] / 2, other["y"] + other["height"] - 5, steps=10
+    )
+    dashboard.mouse.up()
+
+    dashboard.wait_for_function(f"() => ({x_range})() !== {before!r}")
+    expect(dashboard.locator(".split.row")).to_have_count(1)
+    expect(dashboard.locator(".split.column")).to_have_count(0)
+
+
+def test_a_drag_from_a_plotly_figures_margin_leaves_the_panes_alone(nbclassic_server, page):
+    nbclassic_server.open_notebook(page, [code(PLOTLY_FIGURE), code("a1")], wait_for_kernel=True)
+    dashboard = open_dashboard(page)
+    dashboard.set_viewport_size({"width": 1000, "height": 600})
+    send_cell(page, 0)
+    send_cell(page, 1)
+    run_cell(page, 0)
+    dashboard.locator(".pane_plotly .main-svg").first.wait_for()
+    figure = dashboard.locator(".pane_plotly").first.bounding_box()
+    target = pane_box(dashboard, "a1")
+
+    dashboard.mouse.move(figure["x"] + 5, figure["y"] + 5)
+    dashboard.mouse.down()
+    dashboard.mouse.move(
+        target["x"] + target["width"] / 2, target["y"] + target["height"] - 5, steps=10
+    )
+    dashboard.mouse.up()
+
+    expect(dashboard.locator(".split.row")).to_have_count(1)
+    expect(dashboard.locator(".split.column")).to_have_count(0)
