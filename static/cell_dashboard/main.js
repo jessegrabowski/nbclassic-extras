@@ -16,6 +16,7 @@
  *
  * renders.js redraws matplotlib figures at the size of their panes, in Python kernels. A cell
  * tagged dashboard-no-redraw keeps the picture it drew, and costs the kernel nothing to hold.
+ * renders.js also fetches the kernel's plotly.js for a window that has a Plotly figure to draw.
  *
  * The notebook keeps the title and outputs of every run of a linked cell, so the window can step
  * back through earlier versions. A request the kernel aborted, because a cell queued before it
@@ -291,6 +292,10 @@ define([
                 figures.request(data);
             } else if (data.type === 'version') {
                 sendVersion(data.id, data.version);
+            } else if (data.type === 'need_plotly') {
+                figures.plotlyScript().then((script) => {
+                    channel.postMessage({type: 'plotly', script});
+                });
             }
         };
         onCellListChange(() => {

@@ -325,3 +325,75 @@ test("closing a pane lets the kernel drop its cell's figures", async (t) => {
 
     assert.match(expressions(dashboard.kernelRequests.at(-1)).forgot, /\.forget\("cell-0"\)$/);
 });
+
+function plotlyRequests(dashboard) {
+    return dashboard.kernelRequests.filter((request) => expressions(request).plotlyJs);
+}
+
+test("a window that needs plotly.js gets the kernel's, read once", async (t) => {
+    const dashboard = await linkedDashboard(t);
+
+    dashboard.channel.deliver({ type: "need_plotly" });
+    await dashboard.settle();
+    const [asked] = plotlyRequests(dashboard);
+    assert.match(expressions(asked).plotlyJs, /\.plotly_script\(\)$/);
+    assert.equal(asked.options.silent, true);
+    const answered = { plotlyJs: { script: "// plotly" } };
+    dashboard.answer(dashboard.kernelRequests.indexOf(asked), answered);
+    await dashboard.settle();
+    dashboard.channel.deliver({ type: "need_plotly" });
+    await dashboard.settle();
+
+    assert.equal(plotlyRequests(dashboard).length, 1);
+    assert.deepEqual(dashboard.channel.posted, [
+        { type: "plotly", script: "// plotly" },
+        { type: "plotly", script: "// plotly" },
+    ]);
+});
+
+test("a kernel without plotly.js answers null and is asked again next time", async (t) => {
+    const dashboard = await linkedDashboard(t);
+    dashboard.channel.deliver({ type: "need_plotly" });
+    await dashboard.settle();
+
+    dashboard.answer(dashboard.kernelRequests.length - 1, { plotlyJs: { error: "no plotly" } });
+    await dashboard.settle();
+    dashboard.channel.deliver({ type: "need_plotly" });
+    await dashboard.settle();
+
+    assert.deepEqual(dashboard.channel.posted, [{ type: "plotly", script: null }]);
+    assert.equal(plotlyRequests(dashboard).length, 2);
+});
+
+test("a restarted kernel is asked for its plotly.js again", async (t) => {
+    const dashboard = await linkedDashboard(t);
+    dashboard.channel.deliver({ type: "need_plotly" });
+    await dashboard.settle();
+    dashboard.answer(dashboard.kernelRequests.length - 1, { plotlyJs: { script: "// plotly" } });
+    await dashboard.settle();
+
+    dashboard.restartKernel();
+    dashboard.answer(dashboard.kernelRequests.length - 1, { install: { installed: true } });
+    await dashboard.settle();
+    dashboard.channel.deliver({ type: "need_plotly" });
+    await dashboard.settle();
+
+    assert.equal(plotlyRequests(dashboard).length, 2);
+});
+
+test("a kernel restarted before it answers leaves the new kernel to send plotly.js", async (t) => {
+    const dashboard = await linkedDashboard(t);
+    dashboard.channel.deliver({ type: "need_plotly" });
+    await dashboard.settle();
+
+    dashboard.restartKernel();
+    dashboard.answer(dashboard.kernelRequests.length - 1, { install: { installed: true } });
+    await dashboard.settle();
+    const asked = plotlyRequests(dashboard).at(-1);
+    const answered = { plotlyJs: { script: "// plotly" } };
+    dashboard.answer(dashboard.kernelRequests.indexOf(asked), answered);
+    await dashboard.settle();
+
+    assert.equal(plotlyRequests(dashboard).length, 2);
+    assert.deepEqual(dashboard.channel.posted, [{ type: "plotly", script: "// plotly" }]);
+});

@@ -3,7 +3,9 @@
  * ready, arms a linked cell just before it runs so the figures it shows get ids, and asks the
  * kernel to draw a figure again at the size of the pane showing it. Loading early puts the helper
  * ahead of any cell in the kernel's queue, and until a cell is armed it does nothing. A kernel
- * holding a helper from another version of this file gets this one in its place.
+ * holding a helper from another version of this file gets this one in its place. The helper also
+ * reads the plotly.js that the kernel's plotly bundles, for the dashboard to draw Plotly figures
+ * with, so the window works offline and draws with the version that made the figure.
  *
  * Every request is a silent execute, which leaves the execution count and every cell's outputs
  * alone, and the kernel answers through user expressions. Anything missing, whether matplotlib,
@@ -81,8 +83,9 @@ define([
      * @param {function} isLinked - whether a cell id belongs to a linked cell.
      * @param {function} post - sends a message to the dashboard.
      * @returns {object} loadHelper(), which loads figures.py into a Python kernel that lacks it,
-     *     request(message), which queues a render the dashboard asked for, and forget(id), which
-     *     lets the kernel drop the figures of a cell no pane shows.
+     *     request(message), which queues a render the dashboard asked for, forget(id), which
+     *     lets the kernel drop the figures of a cell no pane shows, and plotlyScript(), which
+     *     resolves to the kernel's plotly.js, or null when it has none.
      */
     function startRenders(isLinked, post) {
         let loader = loaderCode(helperSource);
@@ -91,6 +94,10 @@ define([
         let pending = new Map();
         // the render the kernel is drawing, as {figure, width, height}, or null
         let inFlight = null;
+        // the kernel's plotly.js once asked for, kept until the kernel restarts
+        let plotly = null;
+        // settles the request for plotly.js while the kernel has yet to answer it
+        let settlePlotly = null;
 
         // the extension can load after the kernel announced it was ready, so every send tries too
         let loadHelper = () => {
@@ -175,6 +182,37 @@ define([
             }
         };
 
+        // a kernel with no plotly.js yet can get it later, so only a script is kept
+        let plotlyScript = () => {
+            loadHelper();
+            if (plotly !== null) {
+                return plotly;
+            }
+            let asked = new Promise((resolve) => {
+                settlePlotly = resolve;
+                let ask = (isReady) => {
+                    if (!isReady) {
+                        return {};
+                    }
+                    let plotlyJs = `${HELPER}.plotly_script()`;
+                    return askKernel(Jupyter.notebook.kernel, '', {plotlyJs});
+                };
+                Promise.resolve(installed).then(ask).then(({plotlyJs}) => {
+                    if (settlePlotly === resolve) {
+                        settlePlotly = null;
+                    }
+                    resolve(typeof plotlyJs?.script === 'string' ? plotlyJs.script : null);
+                });
+            });
+            plotly = asked;
+            asked.then((script) => {
+                if (script === null && plotly === asked) {
+                    plotly = null;
+                }
+            });
+            return asked;
+        };
+
         let execute = codecell.CodeCell.prototype.execute;
         codecell.CodeCell.prototype.execute = function (...args) {
             if (this.kernel) {
@@ -187,6 +225,9 @@ define([
         // the render it was drawing goes back to the front, at a newer size if one is waiting
         Jupyter.notebook.events.on('kernel_ready.Kernel', () => {
             installed = null;
+            plotly = null;
+            let unanswered = settlePlotly;
+            settlePlotly = null;
             if (inFlight !== null) {
                 let {figure, width, height} = inFlight;
                 pending = new Map([[figure, {width, height}], ...pending]);
@@ -194,9 +235,13 @@ define([
             inFlight = null;
             loadHelper();
             renderNext();
+            // the kernel that went away never answers, so the new one is asked in its place
+            if (unanswered !== null) {
+                unanswered(plotlyScript());
+            }
         });
 
-        return {loadHelper, request, forget};
+        return {loadHelper, request, forget, plotlyScript};
     }
 
     return {startRenders};

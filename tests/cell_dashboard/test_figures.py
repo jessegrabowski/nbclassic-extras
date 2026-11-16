@@ -1,5 +1,6 @@
 import ast
 import base64
+import importlib.util
 from pathlib import Path
 import struct
 import sys
@@ -308,3 +309,56 @@ def test_arming_refuses_anything_but_a_cell_id(kernel):
 
     assert reply["content"]["user_expressions"]["answer"]["status"] == "error"
     assert kernel.ask(f"{MODULE}.keeper.armed_cell") is None
+
+
+def test_a_kernel_with_plotly_answers_with_its_plotly_js_without_importing_plotly(kernel):
+    plotly_package = Path(importlib.util.find_spec("plotly").origin).parent
+    kernel.load_helper()
+
+    answer = kernel.ask(f"{MODULE}.plotly_script()")
+
+    assert answer == {"script": (plotly_package / "package_data" / "plotly.min.js").read_text()}
+    assert kernel.ask("'plotly' in __import__('sys').modules") is False
+
+
+def test_a_python_without_plotly_answers_why(monkeypatch):
+    monkeypatch.delitem(sys.modules, "plotly", raising=False)
+    monkeypatch.setattr(sys, "path", [])
+    module = types.ModuleType("cell_dashboard_figures")
+    exec(compile(HELPER.read_text(), "figures.py", "exec"), module.__dict__)
+
+    assert module.plotly_script()._repr_json_() == {"error": "no plotly"}
+
+
+def test_an_imported_plotly_without_its_bundle_answers_why(monkeypatch, tmp_path):
+    plotly = types.ModuleType("plotly")
+    plotly.__path__ = [str(tmp_path)]
+    monkeypatch.setitem(sys.modules, "plotly", plotly)
+    module = types.ModuleType("cell_dashboard_figures")
+    exec(compile(HELPER.read_text(), "figures.py", "exec"), module.__dict__)
+
+    assert module.plotly_script()._repr_json_() == {"error": "no plotly.js"}
+
+
+def test_a_plotly_folder_beside_the_notebook_loses_to_the_installed_plotly(monkeypatch, tmp_path):
+    installed = Path(importlib.util.find_spec("plotly").origin).parent
+    planted = tmp_path / "plotly" / "package_data" / "plotly.min.js"
+    planted.parent.mkdir(parents=True)
+    planted.write_text("planted")
+    (tmp_path / "plotly" / "__init__.py").write_text("")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delitem(sys.modules, "plotly", raising=False)
+    monkeypatch.setattr(sys, "path", ["", str(tmp_path), *sys.path])
+    module = types.ModuleType("cell_dashboard_figures")
+    exec(compile(HELPER.read_text(), "figures.py", "exec"), module.__dict__)
+
+    answer = module.plotly_script()._repr_json_()
+
+    assert answer == {"script": (installed / "package_data" / "plotly.min.js").read_text()}
+
+
+def test_an_answer_shows_its_field_names_as_text_and_leaves_its_values_to_the_json():
+    module = types.ModuleType("cell_dashboard_figures")
+    exec(compile(HELPER.read_text(), "figures.py", "exec"), module.__dict__)
+
+    assert repr(module.Answer(script="// plotly.js", error=None)) == "Answer(script, error)"

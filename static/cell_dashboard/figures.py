@@ -1,5 +1,6 @@
 # cell_dashboard's kernel helper: keeps the matplotlib figures that linked cells display and draws
-# them again at the size of the pane showing them.
+# them again at the size of the pane showing them, and hands the dashboard the plotly.js that the
+# kernel's plotly draws its figures with.
 #
 # The notebook sends this file's source to the kernel and runs it as the module
 # cell_dashboard_figures, so it never has to be installed in the kernel's environment. A kernel
@@ -7,11 +8,15 @@
 # Everything it offers the notebook goes through user expressions on silent executes, which leave
 # the execution count and the cells' outputs alone, and every answer is a JSON object.
 #
-# The helper never imports matplotlib itself. Its formatter is registered by the figure class's
-# name, so a kernel without matplotlib loads it and simply never sees a figure.
+# The helper never imports matplotlib or plotly itself. Its formatter is registered by the figure
+# class's name, so a kernel without matplotlib loads it and simply never sees a figure. plotly.js is
+# read from plotly's package without running any of plotly.
 import base64
+import importlib.machinery
 import io
+import pathlib
 import re
+import sys
 import time
 import uuid
 
@@ -31,8 +36,9 @@ class Answer:
     def _repr_json_(self):
         return self.fields
 
+    # IPython sends the repr beside the JSON, so it names the fields and leaves out their values
     def __repr__(self):
-        return f"Answer({self.fields!r})"
+        return f"Answer({', '.join(self.fields)})"
 
 
 class FigureKeeper:
@@ -215,3 +221,31 @@ def forget(cell_id):
 
 def render(figure_id, width, height):
     return keeper.render(figure_id=figure_id, width=width, height=height)
+
+
+def plotly_script():
+    """Answer with the plotly.js bundled in the kernel's plotly, read without importing plotly."""
+    locations = plotly_locations()
+    if locations is None:
+        return Answer(error="no plotly")
+    for location in locations:
+        path = pathlib.Path(location, "package_data", "plotly.min.js")
+        if path.is_file():
+            return Answer(script=path.read_text(encoding="utf-8"))
+    return Answer(error="no plotly.js")
+
+
+def plotly_locations():
+    """Return the directories of the kernel's plotly package, or None when it has none."""
+    # an imported plotly is the one the figures came from
+    module = sys.modules.get("plotly")
+    if module is not None:
+        return list(getattr(module, "__path__", []))
+    # the working directory is the notebook's, and a plotly folder planted there must never run
+    working_directory = pathlib.Path.cwd().resolve()
+    search_path = [entry for entry in sys.path
+                   if pathlib.Path(entry or ".").resolve() != working_directory]
+    spec = importlib.machinery.PathFinder.find_spec("plotly", search_path)
+    if spec is None or spec.submodule_search_locations is None:
+        return None
+    return list(spec.submodule_search_locations)
